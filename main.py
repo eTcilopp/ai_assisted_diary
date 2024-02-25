@@ -22,7 +22,12 @@ from datetime import datetime
 
 EMBEDDINGS_MODEL = "text-embedding-ada-002"
 AI_MODEL = "gpt-3.5-turbo"
-AI_MODEL = "gpt-4"
+# AI_MODEL = "gpt-4"
+
+# TODO: need to add token count
+# TODO: Move all AI queries to a separate function
+# TODO: Improve prompts
+# TODO: Need to add processing of commentsas well (and hostory of the comments)
 
 
 class Context:
@@ -87,6 +92,7 @@ def get_embedding(text, client, model="text-embedding-ada-002"):
 
 def process_text(text_obj, ai_client, session):
     text_analysis = TextAnalysis()
+    # add useful information about user to the user table
     if isinstance(text_obj, DiaryPost):
         text_analysis.diary_post_id = text_obj.id
     else:
@@ -131,7 +137,8 @@ def process_text(text_obj, ai_client, session):
 
 def get_context(text_analysis, session, number_of_posts=3):
     context = Context()
-
+    # TODO: Add AI replies to the context
+    # TODO Add user's name, age and other useful information to the context
     latest_posts = (
         session.query(DiaryPost)
         .where(DiaryPost.user_id == text_analysis.user_id)
@@ -187,7 +194,7 @@ def get_context(text_analysis, session, number_of_posts=3):
     return context
 
 
-def get_ai_reply(ai_client, diary_post, text_analysis, context):
+def get_ai_reply(ai_client, diary_post, text_analysis, context, session):
     system_prompt = f"""
     You are a professional psychologist. You are analyzing a diary post of a patient. You have the following information:
     A Few Latest post: {context.latest_posts_sorted};
@@ -217,7 +224,27 @@ def get_ai_reply(ai_client, diary_post, text_analysis, context):
         max_tokens=800,
     )
     response = chat_completion.choices[0].message.content
-    data = json.loads(response)
+    system_prompt = f"""
+    Review and improve if needed the reply of a professional psychologist to the diary post of the patient.
+    Make the reply less formal and more human like. Provide only improved text.
+    `{response}`
+    """
+    chat_completion = ai_client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": system_prompt}
+        ],
+        model=AI_MODEL,
+        max_tokens=800,
+    )
+    response = chat_completion.choices[0].message.content
+    comment = Comment()
+    comment.user_id = 1
+    comment.diary_post_id = diary_post.id
+    comment.date = datetime.now()
+    comment.text = response
+    comment.text_analysis_id = text_analysis.id
+    session.add(comment)
+    session.commit()
 
 
 def run():
@@ -229,7 +256,7 @@ def run():
     # text_analysis = process_text(diary_post, ai_client, session)
     text_analysis = session.query(TextAnalysis).where(TextAnalysis.id == 3).first()
     context = get_context(text_analysis, session)
-    ai_reply = get_ai_reply(ai_client, diary_post, text_analysis, context)
+    ai_reply = get_ai_reply(ai_client, diary_post, text_analysis, context, session)
 
 
 if __name__ == "__main__":
