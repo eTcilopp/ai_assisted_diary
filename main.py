@@ -25,7 +25,6 @@ AI_MODEL = "gpt-3.5-turbo"
 # AI_MODEL = "gpt-4"
 
 # TODO: need to add token count
-# TODO: Move all AI queries to a separate function
 # TODO: Improve prompts
 # TODO: Need to add processing of commentsas well (and hostory of the comments)
 
@@ -90,6 +89,15 @@ def get_embedding(text, client, model="text-embedding-ada-002"):
     return str(response.data[0].embedding)
 
 
+def get_ai_completion(ai_client: OpenAI, messages: list):
+    chat_completion = ai_client.chat.completions.create(
+        messages=messages,
+        model=AI_MODEL,
+        max_tokens=800,
+    )
+    return chat_completion.choices[0].message.content
+
+
 def process_text(text_obj, ai_client, session):
     text_analysis = TextAnalysis()
     # add useful information about user to the user table
@@ -111,15 +119,12 @@ def process_text(text_obj, ai_client, session):
     'writing_style' - writing  of the text in a few words,
     'notes' - notes about the text which could be used in the future when analyzing the dymanic of user's psychological state.
     """
-    chat_completion = ai_client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": text_obj.text},
-        ],
-        model=AI_MODEL,
-        max_tokens=400,
-    )
-    response = chat_completion.choices[0].message.content
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": text_obj.text},
+    ]
+    response = get_ai_completion(ai_client, messages)
     data = json.loads(response)
 
     text_analysis.mood = data.get("mood")
@@ -137,8 +142,11 @@ def process_text(text_obj, ai_client, session):
 
 def get_context(text_analysis, session, number_of_posts=3):
     context = Context()
-    # TODO: Add AI replies to the context
-    # TODO Add user's name, age and other useful information to the context
+    # TODO: Do next! Add AI replies to the context
+    user = session.query(User).where(User.id == text_analysis.user_id).first()
+    context.user_name = user.name
+    context.user_age = user.age
+
     latest_posts = (
         session.query(DiaryPost)
         .where(DiaryPost.user_id == text_analysis.user_id)
@@ -148,7 +156,7 @@ def get_context(text_analysis, session, number_of_posts=3):
     )
     context.latest_posts_sorted = [
         (post.date.strftime("%Y-%m-%d"), post.text) for post in latest_posts[::-1]
-    ]  # TODO: Why is it sorted???
+    ]
 
     context.similar_posts = get_similar_post(
         text_analysis,
@@ -197,6 +205,8 @@ def get_context(text_analysis, session, number_of_posts=3):
 def get_ai_reply(ai_client, diary_post, text_analysis, context, session):
     system_prompt = f"""
     You are a professional psychologist. You are analyzing a diary post of a patient. You have the following information:
+    Patient's Name: {context.user_name};
+    Patient's Age: {context.user_age};
     A Few Latest post: {context.latest_posts_sorted};
     A Few Similar Posts: {context.similar_posts};
     Mood History: {context.mood_history};
@@ -216,27 +226,22 @@ def get_ai_reply(ai_client, diary_post, text_analysis, context, session):
     You goal is to improve the psychological state of the patient. You can ask questions, give advice, or just provide support.
     Use same language as the patient used in the diary post.
     """
-    chat_completion = ai_client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": system_prompt}
-        ],
-        model=AI_MODEL,
-        max_tokens=800,
-    )
-    response = chat_completion.choices[0].message.content
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+    response = get_ai_completion(ai_client, messages)
+
     system_prompt = f"""
     Review and improve if needed the reply of a professional psychologist to the diary post of the patient.
     Make the reply less formal and more human like. Provide only improved text.
     `{response}`
     """
-    chat_completion = ai_client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": system_prompt}
-        ],
-        model=AI_MODEL,
-        max_tokens=800,
-    )
-    response = chat_completion.choices[0].message.content
+
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+    response = get_ai_completion(ai_client, messages)
+
     comment = Comment()
     comment.user_id = 1
     comment.diary_post_id = diary_post.id
