@@ -22,10 +22,10 @@ from datetime import datetime
 
 EMBEDDINGS_MODEL = "text-embedding-ada-002"
 AI_MODEL = "gpt-3.5-turbo"
+AI_USER_ID = 1
 # AI_MODEL = "gpt-4"
 
-# TODO: need to add token count
-# TODO: Improve prompts
+# TODO: need to add token count and time count
 # TODO: Need to add processing of commentsas well (and hostory of the comments)
 
 
@@ -109,15 +109,28 @@ def process_text(text_obj, ai_client, session):
     text_analysis.hash = hash(text_obj.text)
     text_analysis.embeddings = get_embedding(text_obj.text, ai_client)
 
+    # system_prompt = """
+    # You are a chatbot that analyses psychological state of a user by analyzing records in a personal diary.
+    # Responce with a JSON with 6 parameters:
+    # 'mood' of the user when writing text in one word,
+    # 'sentiment' of the text in one word. For example: 'positive', 'negative', 'neutral'
+    # 'tone' of the text in one word. For example:  'anxious', 'happy', 'angry'
+    # 'key_words' - most indicative word from the text or certain words or phrases can be indicative of mental states or issues,
+    # 'writing_style' - writing  of the text in a few words,
+    # 'notes' - notes about the text which could be used in the future when analyzing the dymanic of user's psychological state.
+    # """
+
     system_prompt = """
-    You are a chatbot that analyses psychological state of a user by analyzing records in a personal diary.
-    Responce with a JSON with 6 parameters:
-    'mood' of the user when writing text in one word,
-    'sentiment' of the text in one word. For example: 'positive', 'negative', 'neutral'
-    'tone' of the text in one word. For example:  'anxious', 'happy', 'angry'
-    'key_words' - most indicative word from the text or certain words or phrases can be indicative of mental states or issues,
-    'writing_style' - writing  of the text in a few words,
-    'notes' - notes about the text which could be used in the future when analyzing the dymanic of user's psychological state.
+You are an advanced AI chatbot designed to analyze the psychological state of a user by examining entries from a personal diary. Your analysis should be comprehensive, focusing on subtle cues and patterns in the writing to assess the user's emotional and mental state accurately. Your response should be structured as a JSON object with the following six parameters:
+
+- 'mood': Describe the user's mood at the time of writing in a single word, based on the overall emotional tone of the entry.
+- 'sentiment': Categorize the overall sentiment of the text in one word, such as 'positive', 'negative', or 'neutral', taking into account the nuances and context of the writing.
+- 'tone': Identify the tone of the text in one word, such as 'anxious', 'happy', 'angry', etc., considering both the explicit and implicit emotional expressions.
+- 'key_words': List the most indicative words or phrases from the text that signal specific mental states, emotional conditions, or recurring themes, highlighting their significance in understanding the user's psychological state.
+- 'writing_style': Describe the style of writing in a few words, focusing on aspects such as verbosity, coherence, formality, and any stylistic devices used that may give insights into the user's state of mind.
+- 'notes': Provide observations or notes about the diary entry that could be pivotal in analyzing the dynamics of the user's psychological state over time. This may include changes in writing style, frequency of certain moods or tones, or emerging patterns that warrant attention.
+
+Your analysis should be sensitive to the complexities of human emotion and psychological states, using the provided data to offer nuanced insights into the user's wellbeing.
     """
 
     messages = [
@@ -140,9 +153,13 @@ def process_text(text_obj, ai_client, session):
     return text_analysis
 
 
+def retrieve_ai_comment(post_id: int, session):
+    comment = session.query(Comment).where(Comment.diary_post_id == post_id).where(Comment.user_id == AI_USER_ID).order_by(Comment.date.desc()).first()
+    return comment.text if comment else None
+
+
 def get_context(text_analysis, session, number_of_posts=3):
     context = Context()
-    # TODO: Do next! Add AI replies to the context
     user = session.query(User).where(User.id == text_analysis.user_id).first()
     context.user_name = user.name
     context.user_age = user.age
@@ -155,14 +172,17 @@ def get_context(text_analysis, session, number_of_posts=3):
         .limit(number_of_posts).all()
     )
     context.latest_posts_sorted = [
-        (post.date.strftime("%Y-%m-%d"), post.text) for post in latest_posts[::-1]
+        (post.date.strftime("%Y-%m-%d"), post.text, retrieve_ai_comment(post.id, session)) for post in latest_posts[::-1]
     ]
 
-    context.similar_posts = get_similar_post(
+    similar_posts = get_similar_post(
         text_analysis,
         session,
         number_of_posts=3,
         exclude_post_ids=[post.id for post in latest_posts])
+    context.similar_posts = [
+        (post.date.strftime("%Y-%m-%d"), post.text, retrieve_ai_comment(post.id, session)) for post in similar_posts
+    ]
 
     analysis_history = (
         session.query(DiaryPost, TextAnalysis)
@@ -178,7 +198,7 @@ def get_context(text_analysis, session, number_of_posts=3):
         (post.date.strftime("%Y-%m-%d"), analysis.mood)
         for (post, analysis) in analysis_history
     ]
-    context.semtiment_history = [
+    context.sentiment_history = [
         (post.date.strftime("%Y-%m-%d"), analysis.sentiment)
         for (post, analysis) in analysis_history
     ]
@@ -202,39 +222,98 @@ def get_context(text_analysis, session, number_of_posts=3):
     return context
 
 
+def arrange_posts_to_string(posts: List[Tuple[str, str, str]], headers: Tuple) -> str:
+    res = ''
+    for post in posts:
+        res += f'{headers[0]}:\n{post[0]}\n{headers[1]}:\n{post[1]}\n'
+        try:
+            if post[2]:
+                res += f'{headers[2]}:\n{post[2]}\n-------------------\n'
+        except IndexError:
+            pass
+    return res
+
+
 def get_ai_reply(ai_client, diary_post, text_analysis, context, session):
+    # system_prompt = f"""
+    # You are a professional psychologist. You are analyzing a diary post of a patient. You have the following information:
+    # Patient's Name: {context.user_name};
+    # Patient's Age: {context.user_age};
+    # A Few Latest post: {arrange_posts_to_string(context.latest_posts_sorted)};
+    # A Few Similar Posts: {arrange_posts_to_string(context.similar_posts)};
+    # Mood History: {context.mood_history};
+    # Sentiment History: {context.sentiment_history};
+    # Tone History: {context.tone_history};
+    # Indicative Words History: {context.indicative_words_history};
+    # Writing Style History: {context.writing_style_history};
+    # Your Notes History: {context.notes_history};
+    # Now, prepare reply to the following diary post of the patient: {diary_post.text}
+    # You have the following information about this post:
+    # Mood: {text_analysis.mood};
+    # Sentiment: {text_analysis.sentiment};
+    # Tone: {text_analysis.tone};
+    # Indicative Words: {text_analysis.indicative_words};
+    # Writing Style: {text_analysis.writing_style};
+    # Your Notes: {text_analysis.notes};
+    # You goal is to improve the psychological state of the patient. You can ask questions, give advice, or just provide support.
+    # Use same language as the patient used in the diary post.
+    # """
+
     system_prompt = f"""
-    You are a professional psychologist. You are analyzing a diary post of a patient. You have the following information:
-    Patient's Name: {context.user_name};
-    Patient's Age: {context.user_age};
-    A Few Latest post: {context.latest_posts_sorted};
-    A Few Similar Posts: {context.similar_posts};
-    Mood History: {context.mood_history};
-    Sentiment History: {context.semtiment_history};
-    Tone History: {context.tone_history};
-    Indicative Words History: {context.indicative_words_history};
-    Writing Style History: {context.writing_style_history};
-    Your Notes History: {context.notes_history};
-    Now, prepare reply to the following diary post of the patient: {diary_post.text}
-    You have the following information about this post:
-    Mood: {text_analysis.mood};
-    Sentiment: {text_analysis.sentiment};
-    Tone: {text_analysis.tone};
-    Indicative Words: {text_analysis.indicative_words};
-    Writing Style: {text_analysis.writing_style};
-    Your Notes: {text_analysis.notes};
-    You goal is to improve the psychological state of the patient. You can ask questions, give advice, or just provide support.
-    Use same language as the patient used in the diary post.
-    """
+As a professional psychologist, you are analyzing a recent diary post from a patient to understand and potentially improve their psychological state. Below is the relevant information extracted from the patient's diary and your analysis:
+
+- Patient's Information:
+    - Name: {context.user_name}
+    - Age: {context.user_age}
+
+- Diary Analysis Context:
+    - Latest Posts: {arrange_posts_to_string(context.latest_posts_sorted, ('Date', 'Post', "Psychologist's Reply"))}
+    - Similar Posts: {arrange_posts_to_string(context.similar_posts, ('Date', 'Post', "Psychologist's Reply"))}
+    - Mood History: {arrange_posts_to_string(context.mood_history, ('Date', 'Mood'))}
+    - Sentiment History: {arrange_posts_to_string(context.sentiment_history, ('Date', 'Sentiment'))}
+    - Tone History: {arrange_posts_to_string(context.tone_history, ('Date', 'Tone'))}
+    - Indicative Words History: {arrange_posts_to_string(context.indicative_words_history, ('Date', 'Indicative Words'))}
+    - Writing Style History: {arrange_posts_to_string(context.writing_style_history, ('Date', 'Writing Style'))}
+    - Psychologist's Notes History: {arrange_posts_to_string(context.notes_history, ('Date', 'Psychologist Notes'))}
+
+- Current Diary Post Analysis:
+    - Text: {diary_post.text}
+    - Mood: {text_analysis.mood}
+    - Sentiment: {text_analysis.sentiment}
+    - Tone: {text_analysis.tone}
+    - Indicative Words: {text_analysis.indicative_words}
+    - Writing Style: {text_analysis.writing_style}
+    - Your Notes: {text_analysis.notes}
+
+Your goal is to use this information to craft a response that could help improve the patient's psychological state.
+In your reply, consider asking questions, offering advice, or providing support.
+Ensure your response matches language style and tone used by the patient in their diary post.
+Always use patient's name in the reply - translate it if needed.
+Use same language as patient does.
+"""
+
     messages = [
         {"role": "system", "content": system_prompt}
     ]
     response = get_ai_completion(ai_client, messages)
 
     system_prompt = f"""
-    Review and improve if needed the reply of a professional psychologist to the diary post of the patient.
-    Make the reply less formal and more human like. Provide only improved text.
-    `{response}`
+Please refine the psychologist's response to the patient's diary post.
+The goal is to make the communication feel more personal, relatable, and empathetic,
+closely mirroring the language and tone the patient used. Focus on crafting a reply that feels like
+it's coming from a caring friend rather than a distant professional.
+Ensure the language is accessible, warm, and supportive, effectively bridging any emotional distance.
+Adjust the text to enhance its human touch, paying special attention to nuances in the patient's original language style.
+Importantly, adapt your reply to use the same language and expressions as the patient,
+ensuring your response resonates more deeply and personally with them.
+Patient is aware that the reply is AI generated. Please use appropiate signature at the end - like
+"Warm regards, Your AI Psychologist"
+or
+"Best wishes, Your Digital Therapist"
+or whatever fits best.
+Use same language as patient does.
+
+`{response}`
     """
 
     messages = [
@@ -243,7 +322,7 @@ def get_ai_reply(ai_client, diary_post, text_analysis, context, session):
     response = get_ai_completion(ai_client, messages)
 
     comment = Comment()
-    comment.user_id = 1
+    comment.user_id = AI_USER_ID
     comment.diary_post_id = diary_post.id
     comment.date = datetime.now()
     comment.text = response
