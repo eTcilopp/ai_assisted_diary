@@ -27,6 +27,7 @@ AI_USER_ID = 1
 
 # TODO: need to add token count and time count
 # TODO: Need to add processing of commentsas well (and hostory of the comments)
+# TODO: Clean up formatting
 
 
 class Context:
@@ -288,7 +289,7 @@ As a professional psychologist, you are analyzing a recent diary post from a pat
 Your goal is to use this information to craft a response that could help improve the patient's psychological state.
 In your reply, consider asking questions, offering advice, or providing support.
 Ensure your response matches language style and tone used by the patient in their diary post.
-Always use patient's name in the reply - translate it if needed.
+Always use patient's name `{context.user_name}` in the reply - translate it if needed.
 Use same language as patient does.
 """
 
