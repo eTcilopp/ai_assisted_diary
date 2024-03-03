@@ -363,7 +363,6 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
-    # TODO: Neeed to add time tracking
+    run() 
     # TODO: Need to add commot try/except(?)
     # TODO; Move system prompts to a separate file
