@@ -86,7 +86,7 @@ def get_similar_post(text_analysis, session, number_of_posts=3, exclude_post_ids
 def get_embedding(user_id, text_obj, client, model=EMBEDDINGS_MODEL):
     text = text_obj.text.replace("\n", " ")
     response = client.embeddings.create(input=text, model=model)
-    register_token_usage(user_id, text_obj, response)
+    register_token_usage(user_id, text_obj, response.usage, response.model)
 
     return str(response.data[0].embedding)
 
@@ -97,7 +97,7 @@ def get_ai_completion(user_id: int, context_obj, ai_client: OpenAI, messages: li
         model=AI_MODEL,
         max_tokens=800,
     )
-    register_token_usage(user_id, context_obj, chat_completion)
+    register_token_usage(user_id, context_obj, chat_completion.usage, chat_completion.model)
     return chat_completion.choices[0].message.content
 
 
@@ -246,17 +246,17 @@ def get_ai_model_id(ai_model_name):
     return ai_model.id
 
 
-def register_token_usage(user_id, context_obj, completion_obj):
+def register_token_usage(user_id, context_obj, usage, model_name):
     usage = TokenUsage()
 
     usage.user_id = user_id
     usage.context_type_id = get_context_type_id(context_obj, session)
 
-    usage.completion_tokens = completion_obj.usage.completion_tokens
-    usage.prompt_tokens = completion_obj.usage.prompt_tokens
-    usage.total_tokens = completion_obj.usage.total_tokens
-    usage.ai_model_id = get_ai_model_id(completion_obj.model)
-    print(completion_obj.model)
+    usage.completion_tokens = usage.completion_tokens
+    usage.prompt_tokens = usage.prompt_tokens
+    usage.total_tokens = usage.total_tokens
+    usage.ai_model_id = get_ai_model_id(model_name)
+    print(model_name)
 
     session.add(usage)
     session.commit()
@@ -351,3 +351,6 @@ def run():
 
 if __name__ == "__main__":
     run()
+    # TODO: Need to add checking analisys responces for JSON
+    # TODO: Neeed to add time tracking
+    # TODO: Need to add commot try/except(?)
