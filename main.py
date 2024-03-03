@@ -83,9 +83,10 @@ def get_similar_post(text_analysis, session, number_of_posts=3, exclude_post_ids
 
 
 # @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(5))
-def get_embedding(text, client, model="text-embedding-ada-002"):
-    text = text.replace("\n", " ")
+def get_embedding(user_id, text_obj, client, model=EMBEDDINGS_MODEL):
+    text = text_obj.text.replace("\n", " ")
     response = client.embeddings.create(input=text, model=model)
+    register_token_usage(user_id, text_obj, response)
 
     return str(response.data[0].embedding)
 
@@ -109,7 +110,7 @@ def process_text(user_id, text_obj, ai_client):
         text_analysis.inbound_comment_id = text_obj.id
     text_analysis.user_id = text_obj.user_id
     text_analysis.hash = hash(text_obj.text)
-    text_analysis.embeddings = get_embedding(text_obj.text, ai_client)
+    text_analysis.embeddings = get_embedding(user_id, text_obj, ai_client)
 
     system_prompt = """
 You are an advanced AI chatbot designed to analyze the psychological state of a user by examining entries from a personal diary. Your analysis should be comprehensive, focusing on subtle cues and patterns in the writing to assess the user's emotional and mental state accurately. Your response should be structured as a JSON object with the following six parameters:
@@ -255,6 +256,7 @@ def register_token_usage(user_id, context_obj, completion_obj):
     usage.prompt_tokens = completion_obj.usage.prompt_tokens
     usage.total_tokens = completion_obj.usage.total_tokens
     usage.ai_model_id = get_ai_model_id(completion_obj.model)
+    print(completion_obj.model)
 
     session.add(usage)
     session.commit()
@@ -341,8 +343,8 @@ def run():
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
     user_id, diary_post = get_diary_post()
-    # text_analysis = process_text(user_id, diary_post, ai_client)
-    text_analysis = session.query(TextAnalysis).where(TextAnalysis.id == 3).first()  # TODO: Remove this
+    text_analysis = process_text(user_id, diary_post, ai_client)
+    # text_analysis = session.query(TextAnalysis).where(TextAnalysis.id == 3).first()  # TODO: Remove this
     context = get_context(text_analysis)
     ai_reply = get_ai_reply(user_id, ai_client, diary_post, text_analysis, context)
 
