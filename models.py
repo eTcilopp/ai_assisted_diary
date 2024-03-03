@@ -1,6 +1,9 @@
-from sqlalchemy import orm, create_engine, Column, Integer, Float, String, Date, DateTime, ForeignKey, Text, func
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import (orm, create_engine,
+                        Column, Integer, Float, String,
+                        Date, DateTime, ForeignKey, Text,
+                        func)
+# from sqlalchemy.ext.declarative import declarative_base
+# from sqlalchemy.orm import sessionmaker
 
 # Define the base class
 Base = orm.declarative_base()
@@ -92,6 +95,7 @@ class TimeUsage(Base):
     context_object_id = Column(Integer)
     elapsed = Column(Float)
     extended_properties = Column(Text)
+
 
 engine = create_engine('sqlite:///database.db')
 Base.metadata.create_all(engine)
