@@ -1,4 +1,4 @@
-from sqlalchemy import orm, create_engine, Column, Integer, String, Date, DateTime, ForeignKey, Text, func
+from sqlalchemy import orm, create_engine, Column, Integer, Float, String, Date, DateTime, ForeignKey, Text, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -72,6 +72,7 @@ class AiModel(Base):
 class TokenUsage(Base):
     __tablename__ = 'token_usage'
     id = Column(Integer, primary_key=True)
+    created = Column(Integer)
     user_id = Column(Integer, ForeignKey('users.id'))
     context_type_id = Column(Integer, ForeignKey('context_types.id'))
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
@@ -81,6 +82,16 @@ class TokenUsage(Base):
     ai_model_id = Column(Integer, ForeignKey('ai_models.id'))
     extended_properties = Column(Text)
 
+
+class TimeUsage(Base):
+    __tablename__ = 'time_usage'
+    id = Column(Integer, primary_key=True)
+    created = Column(DateTime(timezone=True), server_default=func.now())
+    user_id = Column(Integer, ForeignKey('users.id'))
+    context_type_id = Column(Integer, ForeignKey('context_types.id'))
+    context_object_id = Column(Integer)
+    elapsed = Column(Float)
+    extended_properties = Column(Text)
 
 engine = create_engine('sqlite:///database.db')
 Base.metadata.create_all(engine)

@@ -15,7 +15,7 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from models import DiaryPost, TextAnalysis, User, Comment, TokenUsage, ContextType, AiModel
+from models import DiaryPost, TextAnalysis, User, Comment, TokenUsage, TimeUsage, ContextType, AiModel
 import json
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from datetime import datetime
@@ -25,7 +25,6 @@ AI_MODEL = "gpt-3.5-turbo"
 AI_USER_ID = 1
 # AI_MODEL = "gpt-4"
 
-# TODO: need to add token count and time count
 # TODO: Need to add processing of commentsas well (and hostory of the comments)
 # TODO: Clean up formatting
 
@@ -103,7 +102,7 @@ def get_ai_completion(user_id: int, context_obj, ai_client: OpenAI, messages: li
 
 def process_text(user_id, text_obj, ai_client):
     text_analysis = TextAnalysis()
-    # add useful information about user to the user table
+    # TODO: add useful information about user to the user table
     if isinstance(text_obj, DiaryPost):
         text_analysis.diary_post_id = text_obj.id
     else:
@@ -135,7 +134,7 @@ Your analysis should be sensitive to the complexities of human emotion and psych
     text_analysis.mood = data.get("mood")
     text_analysis.sentiment = data.get("sentiment")
     text_analysis.tone = data.get("tone")
-    text_analysis.indicative_words = data.get("key_words")
+    text_analysis.indicative_words = str(data.get("key_words")).strip('[]')
     text_analysis.writing_style = data.get("writing_style")
     text_analysis.notes = data.get("notes")
 
@@ -226,7 +225,7 @@ def arrange_posts_to_string(posts: List[Tuple[str, str, str]], headers: Tuple) -
     return res
 
 
-def get_context_type_id(context_obj, session):
+def get_context_type_id(context_obj):
     context_type = session.query(ContextType).where(ContextType.name == context_obj.__class__.__name__).first()
     if not context_type:
         context_type = ContextType()
@@ -246,19 +245,31 @@ def get_ai_model_id(ai_model_name):
     return ai_model.id
 
 
+def register_time_usage(user_id, text_object, start_time):
+    time_usage = TimeUsage()
+
+    time_usage.user_id = user_id
+    time_usage.context_type_id = get_context_type_id(text_object)
+    time_usage.context_object_id = text_object.id
+    time_usage.elapsed = (datetime.now() - start_time).total_seconds()
+
+    session.add(time_usage)
+    session.commit()
+
 def register_token_usage(user_id, context_obj, usage, model_name):
-    usage = TokenUsage()
+    token_usage = TokenUsage()
 
-    usage.user_id = user_id
-    usage.context_type_id = get_context_type_id(context_obj, session)
+    token_usage.user_id = user_id
+    token_usage.context_type_id = get_context_type_id(context_obj)
+    token_usage.context_object_id = context_obj.id
 
-    usage.completion_tokens = usage.completion_tokens
-    usage.prompt_tokens = usage.prompt_tokens
-    usage.total_tokens = usage.total_tokens
-    usage.ai_model_id = get_ai_model_id(model_name)
+    token_usage.completion_tokens = getattr(usage, 'completion_tokens', None)
+    token_usage.prompt_tokens = usage.prompt_tokens
+    token_usage.total_tokens = usage.total_tokens
+    token_usage.ai_model_id = get_ai_model_id(model_name)
     print(model_name)
 
-    session.add(usage)
+    session.add(token_usage)
     session.commit()
 
 
@@ -343,14 +354,15 @@ def run():
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
     user_id, diary_post = get_diary_post()
+    start_time = datetime.now()
     text_analysis = process_text(user_id, diary_post, ai_client)
     # text_analysis = session.query(TextAnalysis).where(TextAnalysis.id == 3).first()  # TODO: Remove this
     context = get_context(text_analysis)
     ai_reply = get_ai_reply(user_id, ai_client, diary_post, text_analysis, context)
+    register_time_usage(user_id, diary_post, start_time)
 
 
 if __name__ == "__main__":
     run()
-    # TODO: Need to add checking analisys responces for JSON
     # TODO: Neeed to add time tracking
     # TODO: Need to add commot try/except(?)
