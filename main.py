@@ -15,7 +15,7 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
-from models import DiaryPost, TextAnalysis, User, Comment
+from models import DiaryPost, TextAnalysis, User, Comment, TokenUsage, ContextType, AiModel
 import json
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from datetime import datetime
@@ -41,8 +41,10 @@ class Database:
         self.session = Session()
 
 
-def get_diary_post(session):
-    return session.query(DiaryPost).where(DiaryPost.id == 5).first()
+def get_diary_post():
+    user_id = 5
+    post = session.query(DiaryPost).where(DiaryPost.id == 5).first()
+    return (user_id, post)
 
 
 def distances_from_embeddings(
@@ -80,8 +82,6 @@ def get_similar_post(text_analysis, session, number_of_posts=3, exclude_post_ids
     return session.query(DiaryPost).where(DiaryPost.id.in_(closest_comment_ids)).all()
 
 
-
-
 # @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(5))
 def get_embedding(text, client, model="text-embedding-ada-002"):
     text = text.replace("\n", " ")
@@ -90,16 +90,17 @@ def get_embedding(text, client, model="text-embedding-ada-002"):
     return str(response.data[0].embedding)
 
 
-def get_ai_completion(ai_client: OpenAI, messages: list):
+def get_ai_completion(user_id: int, context_obj, ai_client: OpenAI, messages: list):
     chat_completion = ai_client.chat.completions.create(
         messages=messages,
         model=AI_MODEL,
         max_tokens=800,
     )
+    register_token_usage(user_id, context_obj, chat_completion)
     return chat_completion.choices[0].message.content
 
 
-def process_text(text_obj, ai_client, session):
+def process_text(user_id, text_obj, ai_client):
     text_analysis = TextAnalysis()
     # add useful information about user to the user table
     if isinstance(text_obj, DiaryPost):
@@ -109,17 +110,6 @@ def process_text(text_obj, ai_client, session):
     text_analysis.user_id = text_obj.user_id
     text_analysis.hash = hash(text_obj.text)
     text_analysis.embeddings = get_embedding(text_obj.text, ai_client)
-
-    # system_prompt = """
-    # You are a chatbot that analyses psychological state of a user by analyzing records in a personal diary.
-    # Responce with a JSON with 6 parameters:
-    # 'mood' of the user when writing text in one word,
-    # 'sentiment' of the text in one word. For example: 'positive', 'negative', 'neutral'
-    # 'tone' of the text in one word. For example:  'anxious', 'happy', 'angry'
-    # 'key_words' - most indicative word from the text or certain words or phrases can be indicative of mental states or issues,
-    # 'writing_style' - writing  of the text in a few words,
-    # 'notes' - notes about the text which could be used in the future when analyzing the dymanic of user's psychological state.
-    # """
 
     system_prompt = """
 You are an advanced AI chatbot designed to analyze the psychological state of a user by examining entries from a personal diary. Your analysis should be comprehensive, focusing on subtle cues and patterns in the writing to assess the user's emotional and mental state accurately. Your response should be structured as a JSON object with the following six parameters:
@@ -138,7 +128,7 @@ Your analysis should be sensitive to the complexities of human emotion and psych
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": text_obj.text},
     ]
-    response = get_ai_completion(ai_client, messages)
+    response = get_ai_completion(user_id, text_obj, ai_client, messages)
     data = json.loads(response)
 
     text_analysis.mood = data.get("mood")
@@ -159,7 +149,7 @@ def retrieve_ai_comment(post_id: int, session):
     return comment.text if comment else None
 
 
-def get_context(text_analysis, session, number_of_posts=3):
+def get_context(text_analysis, number_of_posts=3):
     context = Context()
     user = session.query(User).where(User.id == text_analysis.user_id).first()
     context.user_name = user.name
@@ -235,31 +225,42 @@ def arrange_posts_to_string(posts: List[Tuple[str, str, str]], headers: Tuple) -
     return res
 
 
-def get_ai_reply(ai_client, diary_post, text_analysis, context, session):
-    # system_prompt = f"""
-    # You are a professional psychologist. You are analyzing a diary post of a patient. You have the following information:
-    # Patient's Name: {context.user_name};
-    # Patient's Age: {context.user_age};
-    # A Few Latest post: {arrange_posts_to_string(context.latest_posts_sorted)};
-    # A Few Similar Posts: {arrange_posts_to_string(context.similar_posts)};
-    # Mood History: {context.mood_history};
-    # Sentiment History: {context.sentiment_history};
-    # Tone History: {context.tone_history};
-    # Indicative Words History: {context.indicative_words_history};
-    # Writing Style History: {context.writing_style_history};
-    # Your Notes History: {context.notes_history};
-    # Now, prepare reply to the following diary post of the patient: {diary_post.text}
-    # You have the following information about this post:
-    # Mood: {text_analysis.mood};
-    # Sentiment: {text_analysis.sentiment};
-    # Tone: {text_analysis.tone};
-    # Indicative Words: {text_analysis.indicative_words};
-    # Writing Style: {text_analysis.writing_style};
-    # Your Notes: {text_analysis.notes};
-    # You goal is to improve the psychological state of the patient. You can ask questions, give advice, or just provide support.
-    # Use same language as the patient used in the diary post.
-    # """
+def get_context_type_id(context_obj, session):
+    context_type = session.query(ContextType).where(ContextType.name == context_obj.__class__.__name__).first()
+    if not context_type:
+        context_type = ContextType()
+        context_type.name = context_obj.__class__.__name__
+        session.add(context_type)
+        session.commit()
+    return context_type.id
 
+
+def get_ai_model_id(ai_model_name):
+    ai_model = session.query(AiModel).where(AiModel.name == ai_model_name).first()
+    if not ai_model:
+        ai_model = AiModel()
+        ai_model.name = ai_model_name
+        session.add(ai_model)
+        session.commit()
+    return ai_model.id
+
+
+def register_token_usage(user_id, context_obj, completion_obj):
+    usage = TokenUsage()
+
+    usage.user_id = user_id
+    usage.context_type_id = get_context_type_id(context_obj, session)
+
+    usage.completion_tokens = completion_obj.usage.completion_tokens
+    usage.prompt_tokens = completion_obj.usage.prompt_tokens
+    usage.total_tokens = completion_obj.usage.total_tokens
+    usage.ai_model_id = get_ai_model_id(completion_obj.model)
+
+    session.add(usage)
+    session.commit()
+
+
+def get_ai_reply(user_id, ai_client, diary_post, text_analysis, context):
     system_prompt = f"""
 As a professional psychologist, you are analyzing a recent diary post from a patient to understand and potentially improve their psychological state. Below is the relevant information extracted from the patient's diary and your analysis:
 
@@ -296,7 +297,7 @@ Use same language as patient does.
     messages = [
         {"role": "system", "content": system_prompt}
     ]
-    response = get_ai_completion(ai_client, messages)
+    response = get_ai_completion(user_id, diary_post, ai_client, messages)
 
     system_prompt = f"""
 Please refine the psychologist's response to the patient's diary post.
@@ -320,7 +321,7 @@ Use same language as patient does.
     messages = [
         {"role": "system", "content": system_prompt}
     ]
-    response = get_ai_completion(ai_client, messages)
+    response = get_ai_completion(user_id, diary_post, ai_client, messages)
 
     comment = Comment()
     comment.user_id = AI_USER_ID
@@ -334,14 +335,16 @@ Use same language as patient does.
 
 def run():
     db = Database("sqlite:///database.db")
+    global session
     session = db.session
+
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-    diary_post = get_diary_post(session)
-    # text_analysis = process_text(diary_post, ai_client, session)
-    text_analysis = session.query(TextAnalysis).where(TextAnalysis.id == 3).first()
-    context = get_context(text_analysis, session)
-    ai_reply = get_ai_reply(ai_client, diary_post, text_analysis, context, session)
+    user_id, diary_post = get_diary_post()
+    # text_analysis = process_text(user_id, diary_post, ai_client)
+    text_analysis = session.query(TextAnalysis).where(TextAnalysis.id == 3).first()  # TODO: Remove this
+    context = get_context(text_analysis)
+    ai_reply = get_ai_reply(user_id, ai_client, diary_post, text_analysis, context)
 
 
 if __name__ == "__main__":

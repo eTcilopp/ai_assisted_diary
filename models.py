@@ -15,6 +15,7 @@ class User(Base):
     extended_properties = Column(Text)
     # created = Column(DateTime, default=func.now())
 
+
 class DiaryPost(Base):
     __tablename__ = 'diary_posts'
     id = Column(Integer, primary_key=True)
@@ -22,6 +23,7 @@ class DiaryPost(Base):
     date = Column(Date)
     text = Column(Text)
     extended_properties = Column(Text)
+
 
 class Comment(Base):
     __tablename__ = 'comments'
@@ -32,6 +34,7 @@ class Comment(Base):
     date = Column(Date)
     text = Column(Text)
     extended_properties = Column(Text)
+
 
 class TextAnalysis(Base):
     __tablename__ = 'text_analysis'
@@ -49,6 +52,33 @@ class TextAnalysis(Base):
     notes = Column(Text)
     outbound_comment_id = Column(Integer, ForeignKey('comments.id'))
     meta_data = Column(Text)
+    extended_properties = Column(Text)
+
+
+class ContextType(Base):
+    __tablename__ = 'context_types'
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    extended_properties = Column(Text)
+
+
+class AiModel(Base):
+    __tablename__ = 'ai_models'
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    extended_properties = Column(Text)
+
+
+class TokenUsage(Base):
+    __tablename__ = 'token_usage'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    context_type_id = Column(Integer, ForeignKey('context_types.id'))
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    completion_tokens = Column(Integer)
+    prompt_tokens = Column(Integer)
+    total_tokens = Column(Integer)
+    ai_model_id = Column(Integer, ForeignKey('ai_models.id'))
     extended_properties = Column(Text)
 
 
