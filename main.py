@@ -4,17 +4,9 @@ import ast
 from typing import List, Tuple
 from scipy import spatial
 import numpy as np
-from sqlalchemy import (
-    Column,
-    Integer,
-    Float,
-    String,
-    Date,
-    DateTime,
-    ForeignKey,
-    create_engine,
-)
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy import create_engine
+from sqlalchemy.sql import func
+from sqlalchemy.orm import sessionmaker
 from models import DiaryPost, TextAnalysis, User, Comment, TokenUsage, TimeUsage, ContextType, AiModel
 import json
 from tenacity import retry, wait_random_exponential, stop_after_attempt
@@ -44,6 +36,12 @@ def get_diary_post():
     user_id = 5
     post = session.query(DiaryPost).where(DiaryPost.id == 5).first()
     return (user_id, post)
+
+
+def get_comment():
+    comment = session.query(Comment).where(Comment.user_id != AI_USER_ID).\
+        order_by(func.random()).first()
+    return (comment.user_id, comment)
 
 
 def distances_from_embeddings(
@@ -149,7 +147,37 @@ def retrieve_ai_comment(post_id: int, session):
     return comment.text if comment else None
 
 
-def get_context(text_analysis, number_of_posts=3):
+def get_comment_history(inbound_comment_id):
+    # comment_id = text_analysis.inbound_comment_id
+    history = list()
+    comment_obj = session.query(Comment).where(Comment.id == inbound_comment_id).first()
+    while comment_obj:
+        history.insert(0, (comment_obj.user_id, comment_obj.text))
+        diary_post_id = comment_obj.diary_post_id
+        comment_obj = session.query(Comment).where(Comment.id == comment_obj.parent_comment_id).first()
+    diary_post = session.query(DiaryPost).where(DiaryPost.id == diary_post_id).first()
+
+    messages = [{"role": "user", "content": diary_post.text}]
+    for record in history:
+        if record[0] == AI_USER_ID:
+            messages.append({"role": "assistant", "content": record[1]})
+        else:
+            messages.append({"role": "user", "content": record[1]})
+
+    return messages
+
+
+def get_comment_context(text_analysis):
+    context = Context()
+    user = session.query(User).where(User.id == text_analysis.user_id).first()
+    context.user_name = user.name
+    context.user_age = user.age
+    context.messages = get_comment_history(text_analysis.inbound_comment_id)
+
+    return context
+
+
+def get_post_context(text_analysis, number_of_posts=3):
     context = Context()
     user = session.query(User).where(User.id == text_analysis.user_id).first()
     context.user_name = user.name
@@ -225,8 +253,9 @@ def arrange_posts_to_string(posts: List[Tuple[str, str, str]], headers: Tuple) -
     return res
 
 
-def get_context_type_id(context_obj):
-    context_type = session.query(ContextType).where(ContextType.name == context_obj.__class__.__name__).first()
+def get_post_context_type_id(context_obj):
+    context_type = session.query(ContextType).\
+        where(ContextType.name == context_obj.__class__.__name__).first()
     if not context_type:
         context_type = ContextType()
         context_type.name = context_obj.__class__.__name__
@@ -249,31 +278,68 @@ def register_time_usage(user_id, text_object, start_time):
     time_usage = TimeUsage()
 
     time_usage.user_id = user_id
-    time_usage.context_type_id = get_context_type_id(text_object)
+    time_usage.context_type_id = get_post_context_type_id(text_object)
     time_usage.context_object_id = text_object.id
     time_usage.elapsed = (datetime.now() - start_time).total_seconds()
 
     session.add(time_usage)
     session.commit()
 
+
 def register_token_usage(user_id, context_obj, usage, model_name):
     token_usage = TokenUsage()
 
     token_usage.user_id = user_id
-    token_usage.context_type_id = get_context_type_id(context_obj)
+    token_usage.context_type_id = get_post_context_type_id(context_obj)
     token_usage.context_object_id = context_obj.id
 
     token_usage.completion_tokens = getattr(usage, 'completion_tokens', None)
     token_usage.prompt_tokens = usage.prompt_tokens
     token_usage.total_tokens = usage.total_tokens
     token_usage.ai_model_id = get_ai_model_id(model_name)
-    print(model_name)
 
     session.add(token_usage)
     session.commit()
 
 
-def get_ai_reply(user_id, ai_client, diary_post, text_analysis, context):
+def get_ai_reply_to_comment(user_id, ai_client, text_obj, text_analysis, context):
+    system_prompt = f"""
+ As a professional psychologist, you are analyzing a recent comment from a patient to understand and potentially improve their psychological state. Below is the relevant information extracted from the patient's comment and your analysis:
+
+ - Patient's Information:
+    - Name: {context.user_name}
+    - Age: {context.user_age}
+    Current Comment Analysis (this is the comment you are replying to):
+    - Mood: {text_analysis.mood}
+    - Sentiment: {text_analysis.sentiment}
+    - Tone: {text_analysis.tone}
+    - Indicative Words: {text_analysis.indicative_words}
+    - Writing Style: {text_analysis.writing_style}
+    - Your Notes: {text_analysis.notes}
+    """
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ] + context.messages
+
+    response = get_ai_completion(user_id, text_obj, ai_client, messages)
+
+    comment = Comment()
+    comment.user_id = AI_USER_ID
+    comment.parent_comment_id = text_obj.id
+    comment.date = datetime.now()
+    comment.text = response
+    comment.text_analysis_id = text_analysis.id
+    session.add(comment)
+    session.commit()
+
+
+def get_ai_reply_to_post(
+    user_id,
+    ai_client,
+    diary_post,
+    text_analysis,
+    context
+):
     system_prompt = f"""
 As a professional psychologist, you are analyzing a recent diary post from a patient to understand and potentially improve their psychological state. Below is the relevant information extracted from the patient's diary and your analysis:
 
@@ -351,15 +417,23 @@ def run():
     global session
     session = db.session
 
+    start_time = datetime.now()
+
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-    user_id, diary_post = get_diary_post()
-    start_time = datetime.now()
-    text_analysis = process_text(user_id, diary_post, ai_client)
+    # user_id, text_obj = get_diary_post()
+    user_id, text_obj = get_comment()
+
+    text_analysis = process_text(user_id, text_obj, ai_client)
     # text_analysis = session.query(TextAnalysis).where(TextAnalysis.id == 3).first()  # TODO: Remove this
-    context = get_context(text_analysis)
-    ai_reply = get_ai_reply(user_id, ai_client, diary_post, text_analysis, context)
-    register_time_usage(user_id, diary_post, start_time)
+    if isinstance(text_obj, DiaryPost):
+        context = get_post_context(text_analysis)
+        ai_reply = get_ai_reply_to_post(user_id, ai_client, text_obj, text_analysis, context)
+    else:
+        context = get_comment_context(text_analysis)
+        ai_reply = get_ai_reply_to_comment(user_id, ai_client, text_obj, text_analysis, context)
+
+    register_time_usage(user_id, text_obj, start_time)
 
 
 if __name__ == "__main__":
