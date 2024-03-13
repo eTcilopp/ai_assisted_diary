@@ -17,7 +17,6 @@ AI_MODEL = "gpt-3.5-turbo"
 AI_USER_ID = 1
 # AI_MODEL = "gpt-4"
 
-# TODO: Need to add processing of commentsas well (and hostory of the comments)
 # TODO: Clean up formatting
 
 
@@ -425,7 +424,6 @@ def run():
     user_id, text_obj = get_comment()
 
     text_analysis = process_text(user_id, text_obj, ai_client)
-    # text_analysis = session.query(TextAnalysis).where(TextAnalysis.id == 3).first()  # TODO: Remove this
     if isinstance(text_obj, DiaryPost):
         context = get_post_context(text_analysis)
         ai_reply = get_ai_reply_to_post(user_id, ai_client, text_obj, text_analysis, context)
