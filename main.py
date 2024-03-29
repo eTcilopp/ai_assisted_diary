@@ -12,11 +12,11 @@ import json
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from datetime import datetime
 import api_calls
-from api_calls import get_ai_user
+from api_calls import get_ai_user_id, get_latest_posts_from_diary
 
 EMBEDDINGS_MODEL = "text-embedding-ada-002"
 AI_MODEL = "gpt-3.5-turbo"
-AI_USER_ID = 1
+AI_USER_ID = get_ai_user_id()
 # AI_MODEL = "gpt-4"
 
 # TODO: Clean up formatting
@@ -33,10 +33,10 @@ class Database:
         self.session = Session()
 
 
-def get_diary_post():
-    user_id = 5
-    post = session.query(DiaryPost).where(DiaryPost.id == 5).first()
-    return (user_id, post)
+def get_diary_posts():
+    last_post_id = session.query(DiaryPost).order_by(DiaryPost.id.desc()).first().id
+    posts = get_latest_posts_from_diary(last_post_id)
+    return posts
 
 
 def get_comment():
@@ -421,9 +421,9 @@ def run():
     start_time = datetime.now()
 
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    ai_user_id = get_ai_user()
 
-    # user_id, text_obj = get_diary_post()
+    posts = get_diary_posts()
+    # user_id, text_obj = get_diary_posts()
     user_id, text_obj = get_comment()
 
     text_analysis = process_text(user_id, text_obj, ai_client)
