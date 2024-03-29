@@ -11,6 +11,8 @@ from models import DiaryPost, TextAnalysis, User, Comment, TokenUsage, TimeUsage
 import json
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from datetime import datetime
+import api_calls
+from api_calls import get_ai_user
 
 EMBEDDINGS_MODEL = "text-embedding-ada-002"
 AI_MODEL = "gpt-3.5-turbo"
@@ -419,6 +421,7 @@ def run():
     start_time = datetime.now()
 
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    ai_user_id = get_ai_user()
 
     # user_id, text_obj = get_diary_post()
     user_id, text_obj = get_comment()
@@ -435,6 +438,6 @@ def run():
 
 
 if __name__ == "__main__":
-    run() 
+    run()
     # TODO: Need to add commot try/except(?)
     # TODO; Move system prompts to a separate file
