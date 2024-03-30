@@ -7,16 +7,15 @@ import numpy as np
 from sqlalchemy import create_engine
 from sqlalchemy.sql import func
 from sqlalchemy.orm import sessionmaker
-from models import DiaryPost, TextAnalysis, User, Comment, TokenUsage, TimeUsage, ContextType, AiModel
+from models import DiaryPost, DiaryPostWithProcessed, TextAnalysis, User, Comment, TokenUsage, TimeUsage, ContextType, AiModel
 import json
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from datetime import datetime
 import api_calls
-from api_calls import get_ai_user_id, get_latest_posts_from_diary
+from api_calls import get_external_ai_user_id, get_latest_posts_from_diary, get_new_external_users, get_latest_comments_from_diary
 
 EMBEDDINGS_MODEL = "text-embedding-ada-002"
 AI_MODEL = "gpt-3.5-turbo"
-AI_USER_ID = get_ai_user_id()
 # AI_MODEL = "gpt-4"
 
 # TODO: Clean up formatting
@@ -31,12 +30,6 @@ class Database:
         self.engine = create_engine(database_location, echo=echo)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
-
-
-def get_diary_posts():
-    last_post_id = session.query(DiaryPost).order_by(DiaryPost.id.desc()).first().id
-    posts = get_latest_posts_from_diary(last_post_id)
-    return posts
 
 
 def get_comment():
@@ -413,19 +406,88 @@ Use same language as patient does.
     session.commit()
 
 
+def get_ai_user_id():
+    external_user_id = get_external_ai_user_id(session)
+    internal_ai_user = session.query(User).where(User.email == os.environ.get("AI_USER_EMAIL")).first()
+    if not internal_ai_user:
+        internal_ai_user = User(name=os.environ.get("AI_USER_NAME"), email=os.environ.get("AI_USER_EMAIL"), external_id=external_user_id, age=0)
+        session.add(internal_ai_user)
+        session.commit()
+
+    return internal_ai_user.id
+
+
+def update_users():
+    latest_user_id = session.query(User).order_by(User.id.desc()).first().id
+    new_external_users = get_new_external_users(latest_user_id)
+    for user in new_external_users:
+        user_obj = User()
+        user_obj.external_id = user['external_id']
+        user_obj.name = user['name']
+        user_obj.email = user['email']
+        session.add(user_obj)
+        session.commit()
+
+
+def update_diary_posts():
+    last_internal_post = session.query(DiaryPost).order_by(DiaryPost.id.desc()).first()
+    last_internal_post_id = getattr(last_internal_post, 'id', 0)
+    new_external_posts = get_latest_posts_from_diary(last_internal_post_id)
+    new_internal_posts = []
+    for post in new_external_posts:
+        internal_diary_post = DiaryPost()
+        internal_diary_post.external_id = post['external_id']
+        internal_diary_post.user_id = session.query(User).filter(User.external_id == post['author_id']).first().id
+        internal_diary_post.date = datetime.strptime(post['created'], '%a, %d %b %Y %H:%M:%S %Z')
+        internal_diary_post.text = post['text']
+        session.add(internal_diary_post)
+        new_internal_posts.append(internal_diary_post)
+    session.commit()
+    return new_internal_posts
+
+
+def update_comments():
+    latest_internal_comment = session.query(Comment).order_by(Comment.id.desc()).first()
+    last_internal_comment_id = getattr(latest_internal_comment, 'id', 0)
+    new_external_comments = get_latest_comments_from_diary(last_internal_comment_id)
+    new_internal_comments = []
+    for external_comment in new_external_comments:
+        internal_comment = Comment()
+        internal_comment.external_id = external_comment['external_id']
+        internal_comment.user_id = session.query(User).filter(User.external_id == external_comment['author_id']).first().id
+        internal_comment.date = datetime.strptime(external_comment['created'], '%a, %d %b %Y %H:%M:%S %Z')
+        if external_comment['parent_post_id']:
+            internal_comment.diary_post_id = session.query(DiaryPost).filter(DiaryPost.external_id == external_comment['parent_post_id']).first().id
+        else:
+            internal_comment.parent_comment_id = session.query(Comment).filter(Comment.external_id == external_comment['parent_comment_id']).first().id
+        internal_comment.text = external_comment['text']
+        session.add(internal_comment)
+        new_internal_comments.append(internal_comment)
+    session.commit()
+    return new_internal_comments
+
+
+
 def run():
     db = Database("sqlite:///database.db")
+    ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     global session
     session = db.session
+    global AI_USER_ID
+    AI_USER_ID = get_ai_user_id()
+    update_users()
+    new_posts = update_diary_posts()
+    new_comments = update_comments()
+    
 
-    start_time = datetime.now()
-
-    ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    
 
     posts = get_diary_posts()
     # user_id, text_obj = get_diary_posts()
     user_id, text_obj = get_comment()
 
+
+    start_time = datetime.now()
     text_analysis = process_text(user_id, text_obj, ai_client)
     if isinstance(text_obj, DiaryPost):
         context = get_post_context(text_analysis)
