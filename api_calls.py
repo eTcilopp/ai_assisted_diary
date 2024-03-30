@@ -45,7 +45,7 @@ def get_latest_posts_from_diary(latest_post_id):
 
     response = requests.request("GET", url, headers=headers, data=payload, files=files)
 
-    return response.json().get('new_posts')
+    return response.json().get('new_posts', [])
 
 
 def get_new_external_users(latest_user_id):
@@ -59,7 +59,7 @@ def get_new_external_users(latest_user_id):
     response = requests.request("GET", url, headers=headers, data=payload)
 
     # new_external_users = response.json().get('new_users')
-    return response.json().get('new_posts')
+    return response.json().get('new_users', [])
 
 
 def get_latest_comments_from_diary(latest_comment_id):
@@ -72,7 +72,7 @@ def get_latest_comments_from_diary(latest_comment_id):
 
     response = requests.request("GET", url, headers=headers, data=payload)
 
-    return response.json().get('new_posts')
+    return response.json().get('new_comments', [])
 
 def publish_response_to_diary(
     external_parent_post_id,

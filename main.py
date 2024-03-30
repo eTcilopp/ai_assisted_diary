@@ -320,16 +320,17 @@ def get_ai_reply_to_comment(user_id, ai_client, text_obj, text_analysis, context
 
     response = get_ai_completion(user_id, text_obj, ai_client, messages)
 
-    comment = Comment()
-    comment.user_id = AI_USER_ID
-    comment.parent_comment_id = text_obj.id
-    comment.date = datetime.now()
-    comment.text = response
-    comment.text_analysis_id = text_analysis.id
-    session.add(comment)
-    session.commit()
+    # comment = Comment()
+    # comment.user_id = AI_USER_ID
+    # comment.parent_comment_id = text_obj.id
+    # comment.date = datetime.now()
+    # comment.text = response
+    # comment.text_analysis_id = text_analysis.id
+    # session.add(comment)
+    # session.commit()
 
-    return comment.text
+    # return comment.text
+    return response
 
 
 def get_ai_reply_to_post(
@@ -401,17 +402,18 @@ Use same language as patient does.
     ]
     response = get_ai_completion(user_id, diary_post, ai_client, messages)
 
-    comment = Comment()
-    comment.user_id = AI_USER_ID
-    comment.diary_post_id = diary_post.id
-    comment.date = datetime.now()
-    comment.text = response
-    comment.text_analysis_id = text_analysis.id
-    comment.status = Comment.IGNORED
-    session.add(comment)
-    session.commit()
+    # comment = Comment()
+    # comment.user_id = AI_USER_ID
+    # comment.diary_post_id = diary_post.id
+    # comment.date = datetime.now()
+    # comment.text = response
+    # comment.text_analysis_id = text_analysis.id
+    # comment.status = Comment.IGNORED
+    # session.add(comment)
+    # session.commit()
     
-    return comment.text
+    # return comment.text
+    return response
 
 
 def get_ai_user_id():
@@ -452,9 +454,9 @@ def update_diary_posts():
 
 
 def update_comments():
-    latest_internal_comment = session.query(Comment).filter(Comment.user_id != AI_USER_ID).order_by(Comment.id.desc()).first()
-    last_internal_comment_id = getattr(latest_internal_comment, 'id', 0)
-    new_external_comments = get_latest_comments_from_diary(last_internal_comment_id)
+    latest_internal_comment = session.query(Comment).order_by(Comment.id.desc()).first()
+    last_external_comment_id = getattr(latest_internal_comment, 'external_id', 0)
+    new_external_comments = get_latest_comments_from_diary(last_external_comment_id)
     for external_comment in new_external_comments:
         internal_comment = Comment()
         internal_comment.external_id = external_comment['external_id']
@@ -465,8 +467,8 @@ def update_comments():
         else:
             internal_comment.parent_comment_id = session.query(Comment).filter(Comment.external_id == external_comment['parent_comment_id']).first().id
         internal_comment.text = external_comment['text']
-        # if external_comment['author_id'] == session.query(User).filter(User.external_id == external_comment['author_id']).first().id:
-        #     internal_comment.status = Comment.IGNORED
+        if external_comment['author_id'] == session.query(User).filter(User.external_id == external_comment['author_id']).first().id:
+            internal_comment.status = Comment.IGNORED
         session.add(internal_comment)
         session.commit()
 
