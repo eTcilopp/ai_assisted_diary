@@ -7,12 +7,12 @@ import numpy as np
 from sqlalchemy import create_engine
 from sqlalchemy.sql import func
 from sqlalchemy.orm import sessionmaker
-from models import DiaryPost, DiaryPostWithProcessed, TextAnalysis, User, Comment, TokenUsage, TimeUsage, ContextType, AiModel
+from models import DiaryPost, TextAnalysis, User, Comment, TokenUsage, TimeUsage, ContextType, AiModel
 import json
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from datetime import datetime
 import api_calls
-from api_calls import get_external_ai_user_id, get_latest_posts_from_diary, get_new_external_users, get_latest_comments_from_diary
+from api_calls import get_external_ai_user_id, get_latest_posts_from_diary, get_new_external_users, get_latest_comments_from_diary, publish_response_to_diary
 
 EMBEDDINGS_MODEL = "text-embedding-ada-002"
 AI_MODEL = "gpt-3.5-turbo"
@@ -30,12 +30,6 @@ class Database:
         self.engine = create_engine(database_location, echo=echo)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
-
-
-def get_comment():
-    comment = session.query(Comment).where(Comment.user_id != AI_USER_ID).\
-        order_by(func.random()).first()
-    return (comment.user_id, comment)
 
 
 def distances_from_embeddings(
@@ -92,19 +86,22 @@ def get_ai_completion(user_id: int, context_obj, ai_client: OpenAI, messages: li
     return chat_completion.choices[0].message.content
 
 
-def process_text(user_id, text_obj, ai_client):
+def process_text(text_obj, ai_client):
     text_analysis = TextAnalysis()
     # TODO: add useful information about user to the user table
     if isinstance(text_obj, DiaryPost):
         text_analysis.diary_post_id = text_obj.id
     else:
         text_analysis.inbound_comment_id = text_obj.id
-    text_analysis.user_id = text_obj.user_id
-    text_analysis.hash = hash(text_obj.text)
-    text_analysis.embeddings = get_embedding(user_id, text_obj, ai_client)
+    
+    user_id = text_obj.user_id
+    text_analysis.user_id = user_id
 
     system_prompt = """
-You are an advanced AI chatbot designed to analyze the psychological state of a user by examining entries from a personal diary. Your analysis should be comprehensive, focusing on subtle cues and patterns in the writing to assess the user's emotional and mental state accurately. Your response should be structured as a JSON object with the following six parameters:
+You are an advanced AI chatbot designed to analyze the psychological state of a user by examining entries from a personal diary.
+If provided text is meaningless, too short or contains no relevant information, please respond with JSON: {"rejected": True}.
+Otherwise proceed.
+Your analysis should be comprehensive, focusing on subtle cues and patterns in the writing to assess the user's emotional and mental state accurately. Your response should be structured as a JSON object with the following six parameters:
 
 - 'mood': Describe the user's mood at the time of writing in a single word, based on the overall emotional tone of the entry.
 - 'sentiment': Categorize the overall sentiment of the text in one word, such as 'positive', 'negative', or 'neutral', taking into account the nuances and context of the writing.
@@ -123,6 +120,12 @@ Your analysis should be sensitive to the complexities of human emotion and psych
     response = get_ai_completion(user_id, text_obj, ai_client, messages)
     data = json.loads(response)
 
+    if data.get("rejected") is True:
+        text_analysis.rejected = True
+        return text_analysis
+
+    text_analysis.hash = hash(text_obj.text)
+    text_analysis.embeddings = get_embedding(user_id, text_obj, ai_client)
     text_analysis.mood = data.get("mood")
     text_analysis.sentiment = data.get("sentiment")
     text_analysis.tone = data.get("tone")
@@ -326,6 +329,8 @@ def get_ai_reply_to_comment(user_id, ai_client, text_obj, text_analysis, context
     session.add(comment)
     session.commit()
 
+    return comment.text
+
 
 def get_ai_reply_to_post(
     user_id,
@@ -402,8 +407,11 @@ Use same language as patient does.
     comment.date = datetime.now()
     comment.text = response
     comment.text_analysis_id = text_analysis.id
+    comment.status = Comment.IGNORED
     session.add(comment)
     session.commit()
+    
+    return comment.text
 
 
 def get_ai_user_id():
@@ -433,7 +441,6 @@ def update_diary_posts():
     last_internal_post = session.query(DiaryPost).order_by(DiaryPost.id.desc()).first()
     last_internal_post_id = getattr(last_internal_post, 'id', 0)
     new_external_posts = get_latest_posts_from_diary(last_internal_post_id)
-    new_internal_posts = []
     for post in new_external_posts:
         internal_diary_post = DiaryPost()
         internal_diary_post.external_id = post['external_id']
@@ -441,16 +448,13 @@ def update_diary_posts():
         internal_diary_post.date = datetime.strptime(post['created'], '%a, %d %b %Y %H:%M:%S %Z')
         internal_diary_post.text = post['text']
         session.add(internal_diary_post)
-        new_internal_posts.append(internal_diary_post)
     session.commit()
-    return new_internal_posts
 
 
 def update_comments():
-    latest_internal_comment = session.query(Comment).order_by(Comment.id.desc()).first()
+    latest_internal_comment = session.query(Comment).filter(Comment.user_id != AI_USER_ID).order_by(Comment.id.desc()).first()
     last_internal_comment_id = getattr(latest_internal_comment, 'id', 0)
     new_external_comments = get_latest_comments_from_diary(last_internal_comment_id)
-    new_internal_comments = []
     for external_comment in new_external_comments:
         internal_comment = Comment()
         internal_comment.external_id = external_comment['external_id']
@@ -461,12 +465,86 @@ def update_comments():
         else:
             internal_comment.parent_comment_id = session.query(Comment).filter(Comment.external_id == external_comment['parent_comment_id']).first().id
         internal_comment.text = external_comment['text']
+        # if external_comment['author_id'] == session.query(User).filter(User.external_id == external_comment['author_id']).first().id:
+        #     internal_comment.status = Comment.IGNORED
         session.add(internal_comment)
-        new_internal_comments.append(internal_comment)
+        session.commit()
+
+
+def get_post_to_process():
+    post_to_process_lst = []
+
+    posts = session.query(DiaryPost).where(DiaryPost.status == 'unprocessed').all()
+
+    user_to_post_dict = {}
+
+    for post in posts:
+        if post.user_id not in user_to_post_dict:
+            user_to_post_dict[post.user_id] = []
+        user_to_post_dict[post.user_id].append(post)
+
+    for user_id, user_posts in user_to_post_dict.items():
+        user_selected_post = sorted(user_posts, key=lambda o: o.id)[-1]
+        post_to_process_lst.append(user_selected_post)
+
+        for ignored_post in user_posts:
+            if ignored_post.id != user_selected_post.id:
+                ignored_post.status = DiaryPost.IGNORED
+                session.add(ignored_post)
+
     session.commit()
-    return new_internal_comments
+    return post_to_process_lst
 
 
+def get_comments_to_process():
+    comments_to_process_lst = []
+
+    comments = session.query(Comment).\
+        filter(Comment.status == 'unprocessed').\
+        filter(
+            Comment.parent_comment_id.in_(session.query(Comment.id).filter(Comment.user_id == AI_USER_ID))
+        ).all()
+
+    user_to_comment_dict = {}
+
+    for comment in comments:
+        if comment.user_id not in user_to_comment_dict:
+            user_to_comment_dict[comment.user_id] = []
+        user_to_comment_dict[comment.user_id].append(comment)
+
+    for user_id, user_comments in user_to_comment_dict.items():
+        user_selected_comment = sorted(user_comments, key=lambda o: o.id)[-1]
+        comments_to_process_lst.append(user_selected_comment)
+
+        for ignored_comment in user_comments:
+            if ignored_comment.id != user_selected_comment.id:
+                ignored_comment.status = Comment.IGNORED
+                session.add(ignored_comment)
+
+    session.commit()
+    return comments_to_process_lst
+
+
+def set_record_status(record, status):
+    record.status = status
+    session.add(record)
+    session.commit()
+
+
+def publish_ai_reply(record_to_reply_to, ai_reply):
+    if isinstance(record_to_reply_to, DiaryPost):
+        parent_post_id = record_to_reply_to.external_id
+        parent_comment_id = None
+    else:
+        parent_post_id = None
+        parent_comment_id = record_to_reply_to.external_id
+
+    publish_response_to_diary(
+        external_parent_post_id=parent_post_id,
+        external_parent_comment_id=parent_comment_id,
+        text=ai_reply,
+        ai_user_id=AI_USER_ID
+    )
 
 def run():
     db = Database("sqlite:///database.db")
@@ -476,27 +554,30 @@ def run():
     global AI_USER_ID
     AI_USER_ID = get_ai_user_id()
     update_users()
-    new_posts = update_diary_posts()
-    new_comments = update_comments()
-    
+    update_diary_posts()
+    update_comments()
 
-    
+    posts_to_process = get_post_to_process()
+    comments_to_process = get_comments_to_process()
+    for record in comments_to_process + posts_to_process:
+        user_id, text_obj = record.user_id, record
+        start_time = datetime.now()
+        text_analysis = process_text(text_obj, ai_client)
+        if getattr(text_analysis, 'rejected', False):
+            register_time_usage(user_id, text_obj, start_time)
+            set_record_status(record, 'rejected')
+            continue
+        if isinstance(text_obj, DiaryPost):
+            context = get_post_context(text_analysis)
+            ai_reply = get_ai_reply_to_post(user_id, ai_client, text_obj, text_analysis, context)
+        else:
+            context = get_comment_context(text_analysis)
+            ai_reply = get_ai_reply_to_comment(user_id, ai_client, text_obj, text_analysis, context)
 
-    posts = get_diary_posts()
-    # user_id, text_obj = get_diary_posts()
-    user_id, text_obj = get_comment()
+        set_record_status(record, 'processed')
+        publish_ai_reply(text_obj, ai_reply)
 
-
-    start_time = datetime.now()
-    text_analysis = process_text(user_id, text_obj, ai_client)
-    if isinstance(text_obj, DiaryPost):
-        context = get_post_context(text_analysis)
-        ai_reply = get_ai_reply_to_post(user_id, ai_client, text_obj, text_analysis, context)
-    else:
-        context = get_comment_context(text_analysis)
-        ai_reply = get_ai_reply_to_comment(user_id, ai_client, text_obj, text_analysis, context)
-
-    register_time_usage(user_id, text_obj, start_time)
+        register_time_usage(user_id, text_obj, start_time)
 
 
 if __name__ == "__main__":

@@ -73,3 +73,24 @@ def get_latest_comments_from_diary(latest_comment_id):
     response = requests.request("GET", url, headers=headers, data=payload)
 
     return response.json().get('new_posts')
+
+def publish_response_to_diary(
+    external_parent_post_id,
+    external_parent_comment_id,
+    text,
+    ai_user_id):
+    url = os.path.join(BASE_URL, "api/add_comment")
+
+    payload = json.dumps({
+      "author_id": ai_user_id,
+      "parent_post_id": external_parent_post_id,
+      "parent_comment_id": external_parent_comment_id,
+      "text": text
+    })
+    headers = {
+      'Content-Type': 'application/json',
+      'Authorization': f'Bearer {AI_DIARY_BEARER}'
+    }
+
+    response = requests.request("POST", url, headers=headers, data=payload)
+

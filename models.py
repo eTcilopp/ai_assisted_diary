@@ -2,15 +2,15 @@ from sqlalchemy import (orm, create_engine,
                         Column, Integer, Float, String,
                         Date, DateTime, ForeignKey, Text,
                         func)
-from sqlalchemy.orm import relationship
-
+import enum
 import _osx_support
 # from sqlalchemy.ext.declarative import declarative_base
 # from sqlalchemy.orm import sessionmaker
 
 # Define the base class
 Base = orm.declarative_base()
-AI_USER_ID = 1
+
+
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
@@ -25,29 +25,26 @@ class User(Base):
 
 class DiaryPost(Base):
     __tablename__ = 'diary_posts'
+    PROCESSED = 'processed'
+    UNPROCESSED = 'unprocessed'
+    IGNORED = 'ignored'
+    REJECTED = 'rejected'
     id = Column(Integer, primary_key=True)
     external_id = Column(Integer, unique=True)
     user_id = Column(Integer, ForeignKey('users.id'))
     date = Column(Date)
     text = Column(Text)
     extended_properties = Column(Text)
-
-    comments = relationship("Comment", back_populates="diary_post")
-    user = relationship("User")
-    
-    def has_comments_by_user(self, user_id):
-        for comment in self.comments:
-            if comment.user_id == user_id:
-                return True
-        return False
-
-    @property
-    def processed(self):
-        return any(comment.user_id == AI_USER_ID for comment in self.comments)
+    text_analysis_id = Column(Integer, ForeignKey('text_analysis.id'))
+    status = Column(Text, default=UNPROCESSED, nullable=True)
 
 
 class Comment(Base):
     __tablename__ = 'comments'
+    PROCESSED = 'processed'
+    UNPROCESSED = 'unprocessed'
+    IGNORED = 'ignored'
+    REJECTED = 'rejected'
     id = Column(Integer, primary_key=True)
     external_id = Column(Integer, unique=True)
     user_id = Column(Integer, ForeignKey('users.id'))
@@ -56,8 +53,8 @@ class Comment(Base):
     date = Column(Date)
     text = Column(Text)
     extended_properties = Column(Text)
-
-    diary_post = relationship("DiaryPost", back_populates="comments")
+    text_analysis_id = Column(Integer, ForeignKey('text_analysis.id'))
+    status = Column(Text, default=UNPROCESSED, nullable=True)
 
 
 class TextAnalysis(Base):
