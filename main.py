@@ -12,6 +12,8 @@ import json
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from datetime import datetime
 import api_calls
+import sched
+import time
 from api_calls import get_external_ai_user_id, get_latest_posts_from_diary, get_new_external_users, get_latest_comments_from_diary, publish_response_to_diary
 
 EMBEDDINGS_MODEL = "text-embedding-ada-002"
@@ -548,7 +550,9 @@ def publish_ai_reply(record_to_reply_to, ai_reply):
         ai_user_id=AI_USER_ID
     )
 
+
 def run():
+    print(f"{datetime.now()} Running AI processing...")
     db = Database("sqlite:///database.db")
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     global session
@@ -582,7 +586,21 @@ def run():
         register_time_usage(user_id, text_obj, start_time)
 
 
+def main():
+    scheduler = sched.scheduler(time.time, time.sleep)
+    interval = 60 * 60 * 4 # 6 hours in seconds
+
+    def periodic_task(sc):
+        run()
+        sc.enter(interval, 1, periodic_task, (sc,))
+
+    # Schedule the initial task
+    scheduler.enter(interval, 1, periodic_task, (scheduler,))
+    # Run the scheduler
+    scheduler.run()
+
+
 if __name__ == "__main__":
-    run()
+    main()
     # TODO: Need to add commot try/except(?)
     # TODO; Move system prompts to a separate file
