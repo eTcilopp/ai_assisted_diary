@@ -588,7 +588,7 @@ def run():
 
 def main():
     scheduler = sched.scheduler(time.time, time.sleep)
-    interval = (60 * 60 * 4)
+    interval = (60 * 60 * 6)
 
     def periodic_task(sc):
         run()
