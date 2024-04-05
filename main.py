@@ -653,18 +653,18 @@ def main():
     logging.getLogger().addHandler(handler)
     # run()  # TODO: Remove me
 
-    # scheduler = sched.scheduler(time.time, time.sleep)
-    # interval = (60 * 60 * 6)
+    scheduler = sched.scheduler(time.time, time.sleep)
+    interval = (60 * 60 * 6)
 
-    # def periodic_task(sc):
-    #     run()
-    #     sc.enter(interval, 1, periodic_task, (sc,))
+    def periodic_task(sc):
+        run()
+        sc.enter(interval, 1, periodic_task, (sc,))
 
-    # # Schedule the initial task
-    # scheduler.enter(interval, 1, periodic_task, (scheduler,))
-    # # Run the scheduler
-    # logging.info('Started AI processing module')
-    # scheduler.run()
+    # Schedule the initial task
+    scheduler.enter(interval, 1, periodic_task, (scheduler,))
+    # Run the scheduler
+    logging.info('Started AI processing module')
+    scheduler.run()
 
 
 if __name__ == "__main__":
