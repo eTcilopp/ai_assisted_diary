@@ -14,6 +14,8 @@ from datetime import datetime
 import api_calls
 import sched
 import time
+import logging
+from logging.handlers import RotatingFileHandler
 from api_calls import get_external_ai_user_id, get_latest_posts_from_diary, get_new_external_users, get_latest_comments_from_diary, publish_response_to_diary
 
 EMBEDDINGS_MODEL = "text-embedding-ada-002"
@@ -431,20 +433,25 @@ def get_ai_user_id():
 
 def update_users():
     latest_user_id = session.query(User).order_by(User.id.desc()).first().id
+    logging.info(f"Updating users... Latest internal user ID: [{latest_user_id}]")
     new_external_users = get_new_external_users(latest_user_id)
+    logging.info(f"Got new external users: {len(new_external_users)}")
     for user in new_external_users:
         user_obj = User()
         user_obj.external_id = user['external_id']
         user_obj.name = user['name']
         user_obj.email = user['email']
         session.add(user_obj)
-        session.commit()
+    session.commit()
+    logging.info("Users updated.")
 
 
 def update_diary_posts():
     last_internal_post = session.query(DiaryPost).order_by(DiaryPost.id.desc()).first()
     last_internal_post_id = getattr(last_internal_post, 'id', 0)
+    logging.info(f"Updating diary posts... Latest internal post ID: [{last_internal_post_id}]")
     new_external_posts = get_latest_posts_from_diary(last_internal_post_id)
+    logging.info(f"Got new external posts: {len(new_external_posts)}")
     for post in new_external_posts:
         internal_diary_post = DiaryPost()
         internal_diary_post.external_id = post['external_id']
@@ -453,12 +460,36 @@ def update_diary_posts():
         internal_diary_post.text = post['text']
         session.add(internal_diary_post)
     session.commit()
+    logging.info("Diary posts updated.")
+
+
+def get_parent_post_internal_author_id(external_comment):
+    if external_comment['parent_post_id']:
+        diary_post_id = session.query(DiaryPost).filter(DiaryPost.external_id == external_comment['parent_post_id']).first().id
+    else:
+        parent_comment_external_id = external_comment['parent_comment_id']
+        parent_comment_internal = session.query(Comment).filter(Comment.external_id == parent_comment_external_id).first()
+        while parent_comment_internal.diary_post_id is None:
+            parent_comment_internal = session.query(Comment).filter(Comment.id == parent_comment_internal.parent_comment_id).first()
+        diary_post_id = parent_comment_internal.diary_post_id
+
+    return session.query(DiaryPost).filter(DiaryPost.id == diary_post_id).first().user_id
+
+
+def get_parent_comment_internal_author_id(parent_comment_id):
+    if not parent_comment_id:
+        # this it comment to a post - no parent comment
+        return
+    parent_comment_internal = session.query(Comment).filter(Comment.external_id == parent_comment_id).first()
+    return parent_comment_internal.user_id
 
 
 def update_comments():
     latest_internal_comment = session.query(Comment).order_by(Comment.id.desc()).first()
     last_external_comment_id = getattr(latest_internal_comment, 'external_id', 0)
+    logging.info(f"Updating comments... Latest internal comment ID: [{last_external_comment_id}]")
     new_external_comments = get_latest_comments_from_diary(last_external_comment_id)
+    logging.info(f"Got new external comments: {len(new_external_comments)}")
     for external_comment in new_external_comments:
         internal_comment = Comment()
         internal_comment.external_id = external_comment['external_id']
@@ -466,13 +497,30 @@ def update_comments():
         internal_comment.date = datetime.strptime(external_comment['created'], '%a, %d %b %Y %H:%M:%S %Z')
         if external_comment['parent_post_id']:
             internal_comment.diary_post_id = session.query(DiaryPost).filter(DiaryPost.external_id == external_comment['parent_post_id']).first().id
+            internal_comment.parent_comment_id = None
         else:
+            internal_comment.diary_post_id = None
             internal_comment.parent_comment_id = session.query(Comment).filter(Comment.external_id == external_comment['parent_comment_id']).first().id
         internal_comment.text = external_comment['text']
-        if external_comment['author_id'] == session.query(User).filter(User.external_id == external_comment['author_id']).first().id:
+        # Need to ignore comments from AI user
+        # if external_comment['author_id'] == session.query(User).filter(User.id == AI_USER_ID).first().external_id:
+        #     internal_comment.status = Comment.IGNORED
+
+        # Need to ignore comments from any user other than author of the post (This one makes unncecsary previous rule)
+        parent_post_author_id = get_parent_post_internal_author_id(external_comment)
+        if parent_post_author_id != internal_comment.user_id:
             internal_comment.status = Comment.IGNORED
+            logging.info(f"Ignored comment with external ID [{external_comment['external_id']}]: The commenter is not the author of the original post.")
+
+        # Need to ignore comments from any user, if parent comment is a comment and not from the AI users
+        parent_comment_author_id = get_parent_comment_internal_author_id(internal_comment.parent_comment_id)
+        if parent_comment_author_id and parent_comment_author_id != AI_USER_ID:
+            internal_comment.status = Comment.IGNORED
+            logging.info(f"Ignored comment with external ID [{external_comment['external_id']}]: Not a reply to AI comment.")
+
         session.add(internal_comment)
         session.commit()
+    logging.info("Comments updated.")
 
 
 def get_post_to_process():
@@ -553,6 +601,8 @@ def publish_ai_reply(record_to_reply_to, ai_reply):
 
 def run():
     print(f"{datetime.now()} Running AI processing...")
+    logging.info(f"{datetime.now()} Running AI processing...")
+
     db = Database("sqlite:///database.db")
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     global session
@@ -564,7 +614,9 @@ def run():
     update_comments()
 
     posts_to_process = get_post_to_process()
+    logging.info(f"Posts to process: {len(posts_to_process)}")
     comments_to_process = get_comments_to_process()
+    logging.info(f"Comments to process: {len(comments_to_process)}")
     for record in comments_to_process + posts_to_process:
         user_id, text_obj = record.user_id, record
         start_time = datetime.now()
@@ -572,6 +624,7 @@ def run():
         if getattr(text_analysis, 'rejected', False):
             register_time_usage(user_id, text_obj, start_time)
             set_record_status(record, 'rejected')
+            logging.info(f"{'Post' if isinstance(record, DiaryPost) else 'Comment'} with internal ID [{record.id}] rejected by AI")
             continue
         if isinstance(text_obj, DiaryPost):
             context = get_post_context(text_analysis)
@@ -584,20 +637,34 @@ def run():
         publish_ai_reply(text_obj, ai_reply)
 
         register_time_usage(user_id, text_obj, start_time)
+        logging.info(f"Processed {'post' if isinstance(record, DiaryPost) else 'comment'} with internal ID [{record.id}]")
 
 
 def main():
-    scheduler = sched.scheduler(time.time, time.sleep)
-    interval = (60 * 60 * 6)
+    current_directory = os.path.dirname(os.path.abspath(__file__))
+    log_directory = os.path.join(current_directory, 'logs')
+    log_file_path = os.path.join(log_directory, 'app.log')
+    os.makedirs(log_directory, exist_ok=True)
 
-    def periodic_task(sc):
-        run()
-        sc.enter(interval, 1, periodic_task, (sc,))
+    handler = RotatingFileHandler(log_file_path, maxBytes=1*1024*1024, backupCount=3)
+    logging.getLogger().setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logging.getLogger().addHandler(handler)
+    # run()  # TODO: Remove me
 
-    # Schedule the initial task
-    scheduler.enter(interval, 1, periodic_task, (scheduler,))
-    # Run the scheduler
-    scheduler.run()
+    # scheduler = sched.scheduler(time.time, time.sleep)
+    # interval = (60 * 60 * 6)
+
+    # def periodic_task(sc):
+    #     run()
+    #     sc.enter(interval, 1, periodic_task, (sc,))
+
+    # # Schedule the initial task
+    # scheduler.enter(interval, 1, periodic_task, (scheduler,))
+    # # Run the scheduler
+    # logging.info('Started AI processing module')
+    # scheduler.run()
 
 
 if __name__ == "__main__":
