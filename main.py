@@ -583,7 +583,7 @@ def run():
     global session
     if os.environ.get('DOCKER_CONTAINER') == '1':
         connection_string =\
-            f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@db/{os.environ['MYSQL_DATABASE']}"
+            f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@db/{os.environ['MYSQL_DATABASE']}?charset=utf8mb4"
         engine = create_engine(connection_string)
         Session = sessionmaker(bind=engine)
         session = Session()
