@@ -11,7 +11,7 @@ services:
     environment:
       DOCKER_CONTAINER: 1
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ai_assisted_diary_db
+      MYSQL_DATABASE: ai_assisted_diary
       MYSQL_USER: admin
 
   db:
