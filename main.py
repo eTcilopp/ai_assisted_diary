@@ -97,7 +97,7 @@ def process_text(text_obj, ai_client):
         text_analysis.diary_post_id = text_obj.id
     else:
         text_analysis.inbound_comment_id = text_obj.id
-    
+
     user_id = text_obj.user_id
     text_analysis.user_id = user_id
 
@@ -324,16 +324,6 @@ def get_ai_reply_to_comment(user_id, ai_client, text_obj, text_analysis, context
 
     response = get_ai_completion(user_id, text_obj, ai_client, messages)
 
-    # comment = Comment()
-    # comment.user_id = AI_USER_ID
-    # comment.parent_comment_id = text_obj.id
-    # comment.date = datetime.now()
-    # comment.text = response
-    # comment.text_analysis_id = text_analysis.id
-    # session.add(comment)
-    # session.commit()
-
-    # return comment.text
     return response
 
 
@@ -370,11 +360,11 @@ As a professional psychologist, you are analyzing a recent diary post from a pat
     - Writing Style: {text_analysis.writing_style}
     - Your Notes: {text_analysis.notes}
 
-Your goal is to use this information to craft a response that could help improve the patient's psychological state.
-In your reply, consider asking questions, offering advice, or providing support.
-Ensure your response matches language style and tone used by the patient in their diary post.
-Always use patient's name `{context.user_name}` in the reply - translate it if needed.
-Use same language as patient does.
+Your goal is to craft a response that could help improve the patient's psychological state.
+Utilize the provided information without sugarcoating your words. Ask direct questions,
+offer pragmatic advice, or provide necessary support, ensuring your response mirrors the patient's
+language style and tone in their diary post. Always address the patient by their name, {context.user_name},
+and maintain the same language they use.
 """
 
     messages = [
@@ -383,20 +373,16 @@ Use same language as patient does.
     response = get_ai_completion(user_id, diary_post, ai_client, messages)
 
     system_prompt = f"""
-Please refine the psychologist's response to the patient's diary post.
-The goal is to make the communication feel more personal, relatable, and empathetic,
-closely mirroring the language and tone the patient used. Focus on crafting a reply that feels like
-it's coming from a caring friend rather than a distant professional.
-Ensure the language is accessible, warm, and supportive, effectively bridging any emotional distance.
-Adjust the text to enhance its human touch, paying special attention to nuances in the patient's original language style.
-Importantly, adapt your reply to use the same language and expressions as the patient,
-ensuring your response resonates more deeply and personally with them.
-Patient is aware that the reply is AI generated. Please use appropiate signature at the end - like
-"Warm regards, Your AI Psychologist"
-or
-"Best wishes, Your Digital Therapist"
-or whatever fits best.
-Use same language as patient does.
+Refine the psychologist's response to the patient's diary post, infusing it with a sense of personal connection,
+relatability, and empathy. Your aim is to craft a reply that feels like it's coming from a caring
+friend rather than a distant professional. Focus on using language that is warm, accessible, and supportive,
+bridging any emotional distance effectively. Pay close attention to the nuances in the patient's
+original language style and adapt your response accordingly.
+It's crucial to use the same language and expressions as the patient to ensure your reply resonates more deeply
+and personally with them. However, avoid excessive niceness or sweetness in your tone.
+Remember, the patient is aware that the reply is AI-generated, so an appropriate signature like "Warm regards,
+Your AI Psychologist" or "Best wishes, Your Digital Therapist" would be suitable.
+Avoid adding filler text such as placeholders for the therapist's name.
 
 `{response}`
     """
