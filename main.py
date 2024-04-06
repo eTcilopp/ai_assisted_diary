@@ -591,6 +591,7 @@ def run():
         db = Database(connection_string)
         session = db.session
     
+    
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
    
     global AI_USER_ID

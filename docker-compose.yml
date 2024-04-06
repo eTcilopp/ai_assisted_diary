@@ -14,6 +14,12 @@ services:
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ai_assisted_diary
       MYSQL_USER: admin
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AI_DIARY_URL: ${AI_DIARY_URL}
+      AI_DIARY_BEARER: ${AI_DIARY_BEARER}
+      AI_USER_NAME: ${AI_USER_NAME}
+      AI_USER_EMAIL: ${AI_USER_EMAIL}
+      AI_USER_HASH: ${AI_USER_HASH}
 
   db:
     image: mariadb
