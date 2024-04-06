@@ -627,6 +627,7 @@ def run():
 
 
 def main():
+    run()  # TODO: Remove me?
     current_directory = os.path.dirname(os.path.abspath(__file__))
     log_directory = os.path.join(current_directory, 'logs')
     log_file_path = os.path.join(log_directory, 'app.log')
