@@ -1,4 +1,5 @@
 from openai import OpenAI
+from models import Base
 import os
 import ast
 from typing import List, Tuple
@@ -586,6 +587,7 @@ def run():
         engine = create_engine(connection_string)
         Session = sessionmaker(bind=engine)
         session = Session()
+        Base.metadata.create_all(engine, checkfirst=True)
     else:
         connection_string = 'sqlite:///db.sqlite'
         db = Database(connection_string)
