@@ -15,9 +15,9 @@ class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
     external_id = Column(Integer, unique=True)
-    name = Column(String)
-    email = Column(String)
-    age = Column(String)
+    name = Column(String(100))
+    email = Column(String(100))
+    age = Column(String(100))
     notes = Column(Text)
     extended_properties = Column(Text)
     # created = Column(DateTime, default=func.now())
@@ -63,13 +63,13 @@ class TextAnalysis(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     diary_post_id = Column(Integer, ForeignKey('diary_posts.id'))
     inbound_comment_id = Column(Integer, ForeignKey('comments.id'))
-    hash = Column(String)
+    hash = Column(String(100))
     embeddings = Column(Text)
     mood = Column(Text)
-    sentiment = Column(String)
-    tone = Column(String)
-    indicative_words = Column(String)
-    writing_style = Column(String)
+    sentiment = Column(String(100))
+    tone = Column(String(100))
+    indicative_words = Column(String(500))
+    writing_style = Column(String(100))
     notes = Column(Text)
     outbound_comment_id = Column(Integer, ForeignKey('comments.id'))
     meta_data = Column(Text)
@@ -79,14 +79,14 @@ class TextAnalysis(Base):
 class ContextType(Base):
     __tablename__ = 'context_types'
     id = Column(Integer, primary_key=True)
-    name = Column(String)
+    name = Column(String(100))
     extended_properties = Column(Text)
 
 
 class AiModel(Base):
     __tablename__ = 'ai_models'
     id = Column(Integer, primary_key=True)
-    name = Column(String)
+    name = Column(String(100))
     extended_properties = Column(Text)
 
 
@@ -115,8 +115,8 @@ class TimeUsage(Base):
     extended_properties = Column(Text)
 
 
-engine = create_engine('sqlite:///database.db')
-Base.metadata.create_all(engine)
+# engine = create_engine('sqlite:///database.db')
+# Base.metadata.create_all(engine)
 
 # TODO: This was not tested yet
 # ai_user = User(name='AI', age='2020-01-01', notes='AI user', extended_properties='{}')
