@@ -103,8 +103,9 @@ def process_text(text_obj, ai_client):
 
     system_prompt = """
 You are an advanced AI chatbot designed to analyze the psychological state of a user by examining entries from a personal diary.
-If provided text is meaningless, too short or contains no relevant information, please respond with JSON: {"rejected": True}.
-Otherwise proceed.
+If provided text contains meaningful content and is substantial enough for analysis, please proceed with the analysis.
+However, if the text is too short, lacks substance, or appears to be a generic greeting or test message,
+please respond with JSON: {"rejected": True}. Otherwise, continue with the analysis.
 Your analysis should be comprehensive, focusing on subtle cues and patterns in the writing to assess the user's emotional and mental state accurately. Your response should be structured as a JSON object with the following six parameters:
 
 - 'mood': Describe the user's mood at the time of writing in a single word, based on the overall emotional tone of the entry.
@@ -392,17 +393,6 @@ Avoid adding filler text such as placeholders for the therapist's name.
     ]
     response = get_ai_completion(user_id, diary_post, ai_client, messages)
 
-    # comment = Comment()
-    # comment.user_id = AI_USER_ID
-    # comment.diary_post_id = diary_post.id
-    # comment.date = datetime.now()
-    # comment.text = response
-    # comment.text_analysis_id = text_analysis.id
-    # comment.status = Comment.IGNORED
-    # session.add(comment)
-    # session.commit()
-    
-    # return comment.text
     return response
 
 
