@@ -649,6 +649,7 @@ def main():
     # Schedule the initial task
     scheduler.enter(interval, 1, periodic_task, (scheduler,))
     # Run the scheduler
+    print('Started AI processing module')
     logging.info('Started AI processing module')
     scheduler.run()
 
