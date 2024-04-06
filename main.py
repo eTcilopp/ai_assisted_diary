@@ -579,10 +579,20 @@ def run():
     print(f"{datetime.now()} Running AI processing...")
     logging.info(f"{datetime.now()} Running AI processing...")
 
-    db = Database("sqlite:///database.db")
-    ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     global session
-    session = db.session
+    if os.environ.get('DOCKER_CONTAINER') == '1':
+        connection_string =\
+            f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@db/{os.environ['MYSQL_DATABASE']}"
+        engine = create_engine(connection_string)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+    else:
+        connection_string = 'sqlite:///db.sqlite'
+        db = Database(connection_string)
+        session = db.session
+    
+    ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+   
     global AI_USER_ID
     AI_USER_ID = get_ai_user_id()
     update_users()
