@@ -5,7 +5,6 @@ services:
     build: .
     volumes:
       - .:/app
-      - logs:/app/logs
     depends_on:
       db:
         condition: service_healthy  # Wait for the 'db' service to be healthy
