@@ -5,6 +5,7 @@ services:
     build: .
     volumes:
       - .:/app
+      - logs_volume:/app/logs
     depends_on:
       db:
         condition: service_healthy  # Wait for the 'db' service to be healthy
@@ -37,3 +38,10 @@ services:
       - "3306:3306"
     volumes:
       - ./db_data:/var/lib/mysql
+
+volumes:
+  logs_volume:  # Define the logs volume
+  driver: local  # Optional: Specify the volume driver (defaults to 'local')
+  driver_opts:  # Optional: Specify driver options
+    type: 'none'  # Optional: Specify the type of volume (defaults to 'none')
+    device: '/var/log/myapp'  

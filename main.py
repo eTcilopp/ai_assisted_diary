@@ -640,7 +640,6 @@ def main():
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logging.getLogger().addHandler(handler)
-    # run()  # TODO: Remove me
 
     scheduler = sched.scheduler(time.time, time.sleep)
     interval = (60 * 60 * 1)
@@ -652,7 +651,7 @@ def main():
     # Schedule the initial task
     scheduler.enter(interval, 1, periodic_task, (scheduler,))
     # Run the scheduler
-    print('Started AI processing module')
+
     logging.info('Started AI processing module')
     scheduler.run()
 
