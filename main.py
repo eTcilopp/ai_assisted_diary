@@ -629,18 +629,18 @@ def run():
 
 
 def main():
-    run()  # TODO: Remove me?
     current_directory = os.path.dirname(os.path.abspath(__file__))
     log_directory = os.path.join(current_directory, 'logs')
     log_file_path = os.path.join(log_directory, 'app.log')
     os.makedirs(log_directory, exist_ok=True)
+    print(f'Created log file at: {log_file_path}')
 
     handler = RotatingFileHandler(log_file_path, maxBytes=1*1024*1024, backupCount=3)
     logging.getLogger().setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logging.getLogger().addHandler(handler)
-    # run()  # TODO: Remove me
+    run()  # TODO: Remove me
 
     scheduler = sched.scheduler(time.time, time.sleep)
     interval = (60 * 60 * 6)
