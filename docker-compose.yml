@@ -40,6 +40,10 @@ services:
       - ./db_data:/var/lib/mysql
 
 volumes:
-  logs_volume:  # Define the logs volume
-  driver_opts:  # Optional: Specify driver options
-    device: /var/log/myapp
+  host_logs:  # Define the host_logs volume
+    driver: local  # Specify the volume driver (optional, defaults to local)
+    driver_opts:
+      type: none  # Specify the type of volume (optional, defaults to none)
+      o: bind  # Specify the options for the volume (optional, defaults to bind)
+      device: /var/log/ai_assisted_diary_app  # Specify the path to the directory o
+
