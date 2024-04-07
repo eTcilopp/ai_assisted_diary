@@ -43,5 +43,5 @@ volumes:
   logs_volume:  # Define the logs volume
   driver: local  # Optional: Specify the volume driver (defaults to 'local')
   driver_opts:  # Optional: Specify driver options
-    type: 'none'  # Optional: Specify the type of volume (defaults to 'none')
+    type: none  # Optional: Specify the type of volume (defaults to 'none')
     device: /var/log/myapp
