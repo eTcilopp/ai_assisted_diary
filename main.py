@@ -640,7 +640,7 @@ def main():
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     logging.getLogger().addHandler(handler)
-    run()  # TODO: Remove me
+    # run()  # TODO: Remove me
 
     scheduler = sched.scheduler(time.time, time.sleep)
     interval = (60 * 60 * 1)
