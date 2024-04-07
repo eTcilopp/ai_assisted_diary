@@ -45,5 +45,5 @@ volumes:
     driver_opts:
       type: none  # Specify the type of volume (optional, defaults to none)
       o: bind  # Specify the options for the volume (optional, defaults to bind)
-      device: /home/alex/ai_assisted_diary_app_logs  # Specify the path to the directory o
+      device: /var/log/ai_assisted_diary_app  # Specify the path to the directory o
 
