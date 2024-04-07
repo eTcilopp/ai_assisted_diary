@@ -42,5 +42,4 @@ services:
 volumes:
   logs_volume:  # Define the logs volume
   driver_opts:  # Optional: Specify driver options
-    o: bind 
     device: /var/log/myapp
