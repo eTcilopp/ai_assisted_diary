@@ -29,7 +29,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD}
     restart: always
     healthcheck:
-        test: "mariadb $$MYSQL_DATABASE -uroot -p$$MYSQL_ROOT_PASSWORD -e 'SELECT 1;'"
+        test: "mariadb ${MYSQL_DATABASE} -uroot -p${MYSQL_ROOT_PASSWORD} -e 'SELECT 1;'"
         interval: 2s
         timeout: 2s
         retries: 10

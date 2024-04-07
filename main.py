@@ -643,7 +643,7 @@ def main():
     run()  # TODO: Remove me
 
     scheduler = sched.scheduler(time.time, time.sleep)
-    interval = (60 * 60 * 6)
+    interval = (60 * 60 * 1)
 
     def periodic_task(sc):
         run()
