@@ -40,7 +40,7 @@ services:
       - ./db_data:/var/lib/mysql
 
 volumes:
-  host_logs:  # Define the host_logs volume
+  logs_volume:  # Define the host_logs volume
     driver: local  # Specify the volume driver (optional, defaults to local)
     driver_opts:
       type: none  # Specify the type of volume (optional, defaults to none)
