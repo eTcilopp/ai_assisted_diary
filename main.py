@@ -592,10 +592,9 @@ def run():
         connection_string = 'sqlite:///db.sqlite'
         db = Database(connection_string)
         session = db.session
-    
-    
+
     ai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-   
+
     global AI_USER_ID
     AI_USER_ID = get_ai_user_id()
     update_users()
