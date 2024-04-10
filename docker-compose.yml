@@ -6,6 +6,11 @@ services:
     volumes:
       - .:/app
       - logs_volume:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
     depends_on:
       db:
         condition: service_healthy  # Wait for the 'db' service to be healthy
