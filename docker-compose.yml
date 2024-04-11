@@ -3,6 +3,7 @@ version: '3'
 services:
   ai_assisted_diary_app:
     build: .
+    command: /app/entrypoint.sh 
     volumes:
       - .:/app
       - logs_volume:/app/logs
