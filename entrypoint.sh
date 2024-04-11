@@ -4,4 +4,4 @@
 git pull
 
 # Start your application
-exec "$@"
+python3 -u main.py
