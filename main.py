@@ -19,9 +19,11 @@ import logging
 from logging.handlers import RotatingFileHandler
 from api_calls import get_external_ai_user_id, get_latest_posts_from_diary, get_new_external_users, get_latest_comments_from_diary, publish_response_to_diary
 
-EMBEDDINGS_MODEL = "text-embedding-ada-002"
-AI_MODEL = "gpt-3.5-turbo"
-# AI_MODEL = "gpt-4"
+# EMBEDDINGS_MODEL = "text-embedding-ada-002"
+# AI_MODEL = "gpt-3.5-turbo"
+# # AI_MODEL = "gpt-4"
+EMBEDDINGS_MODEL = os.environ.get('EMBEDDINGS_MODEL')
+AI_MODEL = os.environ.get('AI_MODEL')
 
 # TODO: Clean up formatting
 
