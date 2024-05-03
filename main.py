@@ -660,7 +660,7 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()  # TODO: Uncomment me
-    run()  # TODO: Remove me
+    main()  # TODO: Uncomment me
+    # run()  # TODO: Remove me
     # TODO: Need to add commot try/except(?)
     # TODO; Move system prompts to a separate file
