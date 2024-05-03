@@ -106,9 +106,9 @@ def process_text(text_obj, ai_client):
 
     system_prompt = """
 You are an advanced AI chatbot designed to analyze the psychological state of a user by examining entries from a personal diary.
-If provided text contains meaningful content and is substantial enough for analysis, please proceed with the analysis.
-However, if the text is too short, lacks substance, or appears to be a generic greeting or test message,
-please respond with JSON: {"rejected": True}. Otherwise, continue with the analysis.
+If provided text contains meaningful content and is substantial enough for analysis, please proceed with the analysis and provide a response.
+However, if the text lacks substance, appears to be a generic greeting or test message, or doesn't pertain to the user's psychological state,
+you may still respond with appropriate guidance or advice. If the text lacks substance, respond with JSON: {'rejected': true}."
 Your analysis should be comprehensive, focusing on subtle cues and patterns in the writing to assess the user's emotional and mental state accurately. Your response should be structured as a JSON object with the following six parameters:
 
 - 'mood': Describe the user's mood at the time of writing in a single word, based on the overall emotional tone of the entry.
@@ -126,6 +126,7 @@ Your analysis should be sensitive to the complexities of human emotion and psych
         {"role": "user", "content": text_obj.text},
     ]
     response = get_ai_completion(user_id, text_obj, ai_client, messages)
+
     data = json.loads(response)
 
     if data.get("rejected") is True:
@@ -583,7 +584,7 @@ def run():
     logging.info(f"{datetime.now()} Running AI processing...")
 
     global session
-    if os.environ.get('DOCKER_CONTAINER') == '1':
+    if os.environ.get('DOCKER_CONTAINER') == '1':  # TODO: Uncomment me
         connection_string =\
             f"mysql://{os.environ['MYSQL_USER']}:{os.environ['MYSQL_PASSWORD']}@db/{os.environ['MYSQL_DATABASE']}?charset=utf8mb4"
         engine = create_engine(connection_string)
@@ -591,7 +592,7 @@ def run():
         session = Session()
         Base.metadata.create_all(engine, checkfirst=True)
     else:
-        connection_string = 'sqlite:///db.sqlite'
+        connection_string = 'sqlite:///database.db'
         db = Database(connection_string)
         session = db.session
 
@@ -659,6 +660,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # main()  # TODO: Uncomment me
+    run()  # TODO: Remove me
     # TODO: Need to add commot try/except(?)
     # TODO; Move system prompts to a separate file
